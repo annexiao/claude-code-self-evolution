@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Weekly confidence-decay job for instincts (macOS launchd).
+
+  Setup:
+    1. Replace USERNAME below with your macOS username (run `whoami`).
+    2. Copy to ~/Library/LaunchAgents/com.user.instinct-decay.plist
+    3. launchctl load ~/Library/LaunchAgents/com.user.instinct-decay.plist
+
+  To disable:
+    launchctl unload ~/Library/LaunchAgents/com.user.instinct-decay.plist
+
+  On Linux, use a weekly cron entry instead:
+    0 3 * * 0  python3 ~/.claude/scripts/apply-instinct-decay.py
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.instinct-decay</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/USERNAME/.claude/scripts/apply-instinct-decay.py</string>
+    </array>
+
+    <!-- Run every Sunday at 03:00 local time -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USERNAME/.claude/logs/instinct-decay.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/USERNAME/.claude/logs/instinct-decay.error.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

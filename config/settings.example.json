@@ -1,0 +1,28 @@
+{
+  "// note": "Merge these hook blocks into your ~/.claude/settings.json. These wire the tool-call capture stream (the observer). The conversation-capture stream (correction/delight) is driven by the skills at session-end and needs no hook. install.sh appends these for you.",
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/skills/continuous-learning-v2/hooks/observe.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/skills/continuous-learning-v2/hooks/observe.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

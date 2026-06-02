@@ -1,0 +1,30 @@
+claude-code-self-evolution
+Copyright (c) 2026 Ann Xiao
+
+This project builds on and includes code from:
+
+  ECC (everything-claude-code)
+  https://github.com/affaan-m/ECC
+  Copyright (c) Affaan Mustafa
+  Licensed under the MIT License.
+
+The instinct/observer engine vendored under `engine/continuous-learning-v2/`
+is from ECC, with one local modification: the confidence-decay logic was
+removed from the observer agent prompt (`agents/observer.md`) and replaced by
+a deterministic Python script (`scripts/apply-instinct-decay.py`), so that an
+LLM is not asked to perform arithmetic that code does more reliably.
+
+Original contributions of this project (not part of ECC):
+
+  - The capture-vs-judgment separation architecture
+  - skills/correction-capture     (conversation-derived corrections: D1 + D2)
+  - skills/delight-capture         (conversation-derived endorsements: D1 + D2)
+  - commands/evolve.md             (cost-aware four-gate routing rewrite of /evolve;
+                                    reads conversation candidates in addition to instincts;
+                                    adds rule + memory as output channels)
+  - scripts/apply-instinct-decay.py
+  - scripts/verify-pending-evolve.sh
+  - scripts/review-evolve-signals.sh
+  - docs/ARCHITECTURE.md
+
+See docs/COMPARISON-WITH-ECC.md for a precise diff of what was added and why.
