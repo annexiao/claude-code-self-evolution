@@ -45,6 +45,11 @@ Every candidate carries source facts recorded by capture (facts, not judgment): 
 **2. Confidence gate, how strong is the evidence?**
 `routing_confidence` is stamped here (judgment, not capture): **high** = clearly cross-project-general OR ≥2 *agreeing* projects/sessions OR the user meta-corrected; **medium** = plausible but single-instance; **low/unclear** = scope unattributable. Only **high** may proceed toward global; medium/low/unclear → defer.
 
+> **Recurrence-gating is for CORRECTIONS, not for FRAMEWORKS (a category error to avoid).** The "single-instance, defer until it recurs" rule above is calibrated for **behavioral-pattern corrections**: a correction needs ≥2 occurrences to confirm it is a *real systemic issue* and not a one-off slip. **It does NOT apply to strategic frameworks / mental models**, the `delight-aha-framework` (and most `delight-claude-move`) candidates. A transferable insight is valuable on its **first articulation**, it does not need to recur to prove it is real, *because it is a lens, not a flaky pattern.* Treating an aha like a flaky test, withholding it until it repeats, is a category error that silently drops the **highest-value signal** /evolve exists to capture. So:
+> - For `type: delight-aha-framework` / `delight-claude-move`: **single-instance is sufficient** for promotion to **memory** (the framework channel). Judge them on **transferability and durability**, NOT recurrence count.
+> - For corrections (`type: correction`): recurrence remains the bar for becoming a **rule** (a one-off correction may still be a one-off, ≥2 confirms it is systemic).
+> - Mnemonic: **recurrence is the bar for corrections to rules; transferability is the bar for frameworks to memory.** Never gate a framework on recurrence.
+
 **3. Conflict gate, is there a counterexample or boundary conflict? (a VETO, not a score)**
 Before promoting, scan other projects' memory/candidates/instincts AND existing `rules/` for a contradicting entry (¬X). This gate is **asymmetric**: a single genuine counterexample outweighs many agreements, because the claim under test is "this is *globally* true" and one counterexample refutes universality.
 - **Any genuine conflict VETOES global promotion**, it does not merely lower confidence. The candidate is not discarded; it is reclassified `context-dependent` and handed to the Scope gate for project-scoping.
@@ -349,15 +354,18 @@ Randomly pick 5 of this run's candidates; for each show: original body text, ful
 
 ### Metrics (computed for the run)
 
-- **global_promotion_rate** = (global-rule + global-memory) / total candidates processed
-- **defer_rate** = deferred / total
+> **Exclude already-covered candidates from BOTH numerator and denominator.** A candidate already captured by an existing rule/skill/memory is an **archive / no-op**, not a promotion, counting it inflates the denominator and (if mis-bucketed) the numerator. The eligible base is **NEW candidates only**: `eligible = total - already_covered`. And **rule-promotion and memory-promotion are separate rates**: the 30% guard is about *rule* bloat (behavioral, near-always-loaded), whereas memory is a recall-gated cheap channel and frameworks-to-memory is the *designed* path, not a suspect promotion.
+
+- **rule_promotion_rate** = global-rule writes / eligible-NEW candidates  (the rate the 30% guard applies to)
+- **memory_promotion_rate** = global-memory writes / eligible-NEW candidates  (informational, NOT gated at 30%, especially for `delight-*` framework candidates whose intended home is memory)
+- **defer_rate** = deferred / eligible-NEW
 - **conflict_surfaced_count** = candidates whose conflict_scan_result ≠ `none`
 - **project_specific_confirmation_count** = project-route candidates that required user confirmation
 - **user_correction_count** = times the user overrode a proposed route in this run's review
 
 ### Safety thresholds (checked BEFORE writing, a trip pauses or downgrades, never silently proceeds)
 
-1. **global_promotion_rate > 30% → PAUSE and explain.** Do not write. Promoting more than ~30% of a batch to global is suspect (the global bar, high-conf + cross-project + no-conflict, should rarely clear that many at once). Surface the rate, list what's being promoted, ask the user to confirm or trim first.
+1. **rule_promotion_rate > 30% → PAUSE and explain.** Do not write. Promoting more than ~30% of the **eligible-NEW** batch to global *rules* is suspect (the global rule bar, high-conf + cross-project + no-conflict, should rarely clear that many at once). Surface the rate, list what's being promoted, ask the user to confirm or trim first. **Note:** `memory_promotion_rate` is NOT subject to this 30% gate, a backlog of `delight-*` framework candidates is *supposed* to mostly become memory, and gating that on the rule-bloat threshold is the category error corrected in the Confidence gate above. Already-covered candidates are excluded from the base entirely (archive, not promotion).
 2. **conflict_scan_result all `none` BUT candidates span ≥2 projects → flag for re-check.** Zero conflicts across a multi-project batch usually means the scan was too shallow. Re-run it carefully (read the actual other-project entries, don't pattern-match) before trusting the all-clear.
 3. **project-specific candidate without user confirmation → MUST NOT write project rule/memory.** Hard block. No confirmation → stays `defer`, never auto-written.
 4. **confidence not explainable → default `defer`.** If you can't state in one sentence why a candidate is high/medium/low, it isn't high. Default to `defer`.
