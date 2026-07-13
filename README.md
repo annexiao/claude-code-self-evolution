@@ -2,6 +2,8 @@
 
 # claude-code-self-evolution
 
+English | [中文](README.zh-CN.md)
+
 ## *You correct Claude Code the same way every single time. And every single time, it forgets. What if it didn't?*
 
 **A learning layer that turns your corrections into the rules, memory, and skills your agent actually keeps.**
