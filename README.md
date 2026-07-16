@@ -43,6 +43,7 @@ flowchart LR
     E --> R["rule<br/>(cheap)"]
     E --> M["memory"]
     E --> S["skill<br/>(expensive)"]
+    E --> AG["agent"]
     E --> X["defer"]
     style E fill:#ffe0b2,stroke:#e65100,color:#1a1a1a
     style B fill:#e8f4f8,stroke:#4a90a4,color:#143a47
@@ -63,6 +64,14 @@ Most self-evolving agents either retrain weights or auto-rewrite one prompt. Thi
 - **The eval corpus is free.** Every accept/reject/defer you make at `/evolve` is logged. That log *is* the labeled dataset for grading whether the capture skills are too noisy. No separate eval harness.
 
 See [docs/COMPARISON-OTHER-SYSTEMS.md](docs/COMPARISON-OTHER-SYSTEMS.md) for an honest table against Hermes, Sepo, the OpenAI cookbook, the self-evolving-agents survey, and EvoMap (including where the ideas overlap). In the survey's taxonomy (arXiv 2507.21046), this project sits at **Memory/Tools, evolved inter-test-time, from textual feedback, in a single-agent coding setting**: it deliberately avoids the heaviest routes (evolving weights or architecture) because only reversible behavioral instructions are worth letting an agent rewrite about itself.
+
+## What's new
+
+**2026-07-15: enhancements to the enforcement model and `/evolve`.**
+
+- **The enforcement model was rebuilt: diagnose the failure, then match the fix to the rule's shape.** *Why* did a rule fail: never loaded (**plumbing**, fix delivery), loaded-but-ignored (**steerability**), or fired where it should not (over-scoping, narrow it)? Only a steerability failure gets a stronger home, and it is routed by shape rather than just "made harder": a mechanical check becomes a **deterministic hook**, a judgment call becomes a **prompt-hook** (a cheap model judges it live, not another line of prose), and a file-bounded rule becomes a **path-scoped rule**.
+- **The plan table shows what each proposal does and how strongly it is held.** A plain-language "what you're judging" column plus a confidence with its reason, so you approve an actual proposal, not a category label. Rows the agent feels lukewarm about are shown as low/medium for you to decide, never silently dropped.
+- **One `/evolve` now sweeps everything.** A single run covers your global queue and every project queue, no more `cd`-ing into each repo. You get one global plan table plus one table per project, each confirmed separately (never one blanket "yes" across scopes).
 
 ## Quick start
 
@@ -100,7 +109,7 @@ Requirements: [Claude Code](https://docs.claude.com/en/docs/claude-code), the `c
    -> delight-capture      (you endorsed a move, or a framing reframed someone)
 ```
 
-All three are **dump-only**: they write candidate files and exit. They never interrupt you and never promote anything durable. That is `/evolve`'s job, later, with your sign-off.
+Both are **dump-only**: they write candidate files and exit. They never interrupt you and never promote anything durable. That is `/evolve`'s job, later, with your sign-off.
 
 ## What's in the box
 

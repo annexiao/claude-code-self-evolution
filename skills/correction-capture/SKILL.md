@@ -44,12 +44,14 @@ D2 is high-value because Claude has direct access to its own reasoning trace and
 
 ### Triggers
 
-- **Direct negation**: "no", "don't", "wait", "actually", "我觉得不对", "不要这样"
+> These example phrases are illustrative signals, not a literal or exhaustive match list. Match on meaning, in any language, not on exact wording.
+
+- **Direct negation**: "no", "don't", "wait", "actually", "that's not right", "don't do it like that"
 - **Style / format feedback**: "too long", "less jargon", "more concrete", "you keep doing X", "less em-dashes", "no over-organized markdown"
-- **Workflow preference**: "我习惯先 X 再 Y", "每次 X 都要 Y 之后", "default 应该是 X"
-- **Aesthetic / framing taste**: "用人话说", "这种 framing 太 corporate", "不要 'incredibly' 这种词"
-- **Self-introspection prompted**: "为什么你又做了 X" / "again 你..." / "你刚才编造了"
-- **Meta-correction** (highest priority): the user explicitly elevates an incident into a rule ("以后都这样" / "记下这个 pattern" / "这条要进 memory")
+- **Workflow preference**: "I always do X before Y", "every time, Y comes after X", "the default should be X"
+- **Aesthetic / framing taste**: "say it in plain words", "this framing is too corporate", "don't use words like 'incredibly'"
+- **Self-introspection prompted**: "why did you do X again" / "you did it again" / "you just made that up"
+- **Meta-correction** (highest priority): the user explicitly elevates an incident into a rule ("always do it this way from now on" / "note this pattern" / "this should go into memory")
 
 ### Direction 1 filter
 
@@ -98,7 +100,8 @@ suggested_target: memory | CLAUDE.md | rule | undetermined
 
 Moments where Claude (in its own response text, not in answer to a direct the user challenge) recognizes a pattern in its own behavior worth changing:
 
-**English**:
+> As above, these are illustrative signals, not a literal or exhaustive match list. Match on meaning, in any language.
+
 - "I should have done X earlier"
 - "I missed Y"
 - "I just realized I've been doing Z"
@@ -108,13 +111,6 @@ Moments where Claude (in its own response text, not in answer to a direct the us
 - "I conflated A and B"
 - "I confused X for Y"
 - "I owe you a sharper version"
-
-**Chinese**:
-- "我刚才其实应该 X"
-- "我意识到我一直在 Y"
-- "我没注意到 Z"
-- "我刚才 conflate 了 A 和 B"
-- "回头看，这一步我应该 W"
 
 **Implicit D2 signals** (highest weight when caught):
 - Claude visibly rolls back a position it just stated and proposes a different one **without the user challenging the original**
@@ -174,8 +170,8 @@ suggested_target: memory | rule | undetermined
 
 Avoid noise:
 
-- **One-off fact corrections** (D1): "那个值是 0.005 不是 0.02", this-task scope only
-- **Current-task implementation decisions** (D1): "用 React 不用 Vue", applies to this build, not a workflow rule
+- **One-off fact corrections** (D1): "that value is 0.005, not 0.02", this-task scope only
+- **Current-task implementation decisions** (D1): "use React, not Vue", applies to this build, not a workflow rule
 - **Performative self-criticism without substance** (D2): "I could have done better" without specifics
 - **Casual filler** (D1): "wait" used to think rather than to correct
 - **Praise / endorsement of a Claude move**: that's `delight-capture`'s job
@@ -299,18 +295,19 @@ confidence label that `/evolve` reads.
 
 ### Triggering example
 
+(Illustrative and paraphrased, not a verbatim transcript.)
+
 Within one session:
-- Turn 12: the user says "如果全局规则生效, 我就用不着说这样的话", captured as
+- Turn 12: the user says "if the global rule actually took effect, I wouldn't have to keep saying this", captured as
   D1, theme tag `trust-the-rule-system`.
-- Turn 18: the user says "可是 如果你在 handover 里面写清楚了 那我也不应该需要说", captured as D1, theme tag `trust-the-rule-system`.
+- Turn 18: the user says "and if it were written down clearly, I shouldn't have to repeat it", captured as D1, theme tag `trust-the-rule-system`.
 - Cluster pass: 2 candidates share theme → emit merged file
   `corr-D1-merged-trust-the-rule-system.md` with `repetition_count: 2`,
   body listing both instances. `/evolve` later promotes this to a rule
   with high confidence.
 
-### User statement
+### Design note
 
-> "如果咱们的 'correction capture' skill 里覆盖了，[...] 也许我们还需要
-> 另外一个 skill 写 repetition 的 你看怎么样合适", the user, 2026-05-24
+> If this skill already covers the correction, maybe repetition should be handled here too, rather than in a separate sibling skill.
 
 Resolved by extending this skill rather than creating a sibling.

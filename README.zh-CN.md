@@ -43,6 +43,7 @@ flowchart LR
     E --> R["rule<br/>(便宜)"]
     E --> M["memory"]
     E --> S["skill<br/>(贵)"]
+    E --> AG["agent"]
     E --> X["暂缓"]
     style E fill:#ffe0b2,stroke:#e65100,color:#1a1a1a
     style B fill:#e8f4f8,stroke:#4a90a4,color:#143a47
@@ -63,6 +64,14 @@ flowchart LR
 - **eval 语料是白来的。** 你在 `/evolve` 里每一次 accept / reject / defer 都被记下来。那份 log **就是** 用来评判捕捉 skills 是不是太吵的标注数据集。不需要单独的 eval harness。
 
 想看诚实的对比,见 [docs/COMPARISON-OTHER-SYSTEMS.md](docs/COMPARISON-OTHER-SYSTEMS.md):对 Hermes、Sepo、OpenAI cookbook、self-evolving-agents 综述、EvoMap 的逐项对照(也写清了哪里想法重叠)。用综述的分类法(arXiv 2507.21046)说,这个项目处在 **Memory/Tools、inter-test-time 演化、来自 textual feedback、single-agent coding 场景**:它刻意避开最重的那几条路(演化权重或架构),因为只有可逆的行为指令,才值得让一个 agent 去改写关于它自己的东西。
+
+## 最近更新
+
+**2026-07-15:enforcement 模型和 `/evolve` 的增强。**
+
+- **enforcement 模型重建了:先诊断失效,再按规则的形状匹配修法。** 规则*为什么*失效:从没被加载(**plumbing**,修的是投递)、加载了却被忽略(**steerability**)、还是在不该触发的场景上误触发(over-scoping,收窄它)?只有 steerability 才需要更强的 home,而且是按形状路由、而不是一律"改得更硬":可机械检查的 → **deterministic hook**,判断类的 → **prompt-hook**(便宜模型现场判,而不是再加一行 prose),限定某类文件的 → **path-scoped rule**。
+- **plan 表现在会写清每条提议在做什么、有多确信。** 一个大白话的 "你在判断什么" 列,加上一个带理由的 confidence,所以你批准的是一条真实的提议,不是一个分类标签。agent 拿不太准的行会以 low/medium 显示交给你判断,绝不悄悄丢掉。
+- **一个 `/evolve` 现在扫全部。** 一次运行覆盖你的全局队列和每一个 project 队列,不用再 `cd` 进每个 repo。你会看到一个全局 plan 表加上每个 project 一个表,各自单独确认(绝不用一个笼统的 "yes" 跨所有 scope)。
 
 ## Quick start
 
@@ -100,7 +109,7 @@ bash install.sh             # 装进 ~/.claude/
    -> delight-capture      (你认可了某个做法,或某个 framing 点醒了谁)
 ```
 
-三个都是 **dump-only**:只写候选文件然后退出。它们从不打断你,也从不 promote 任何持久的东西。那是 `/evolve` 的活,晚点做,带你的签字。
+两个都是 **dump-only**:只写候选文件然后退出。它们从不打断你,也从不 promote 任何持久的东西。那是 `/evolve` 的活,晚点做,带你的签字。
 
 ## 盒子里有什么
 

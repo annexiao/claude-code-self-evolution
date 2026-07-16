@@ -36,9 +36,11 @@ The blind-spot / reframe definition is stricter than "could Claude replicate thi
 
 ### Triggers
 
-- **Explicit praise**: "太好了", "真棒", "you nailed it", "I love that", "你说得好对啊", "this is the shape"
-- **Specific endorsement**: "这个比喻准", "your framing is right", "this table is what I wanted", "this analogy works"
-- **Keep-doing-this signals**: "以后都这样", "I want more of this", "保持这个口吻"
+> These example phrases are illustrative signals, not a literal or exhaustive match list. Match on meaning, in any language, not on exact wording.
+
+- **Explicit praise**: "you nailed it", "I love that", "this is exactly right", "this is the shape"
+- **Specific endorsement**: "that metaphor is spot on", "your framing is right", "this table is what I wanted", "this analogy works"
+- **Keep-doing-this signals**: "do it this way from now on", "I want more of this", "keep this tone"
 - **Implicit reinforcement** (highest evidence): the user adopts Claude's phrasing in subsequent messages, or extends a Claude-introduced concept further
 
 ### Direction 1 acid test
@@ -87,16 +89,8 @@ suggested_target: memory
 
 The set here is broader than Direction 1 because cognitive endorsement uses different vocabulary:
 
-**Chinese**:
-- 洞见 / 这是个洞见 / 你这个洞见很准
-- 发人深省 / 深刻
-- 启发 / 有启发 / 启发到我了
-- 这个角度好 / 这个 framing 好 / 这个 lens 准
-- 这是我没想到的 / 我没意识到 / 没意识到这层
-- 让我重新想了一下 / 我得重新想一下
-- 你这么一说 / 你这么一框
+> As above, these are illustrative signals, not a literal or exhaustive match list. Match on meaning, in any language.
 
-**English**:
 - "insightful" / "this is insightful" / "really insightful"
 - "thought-provoking" / "got me thinking"
 - "didn't see it that way" / "hadn't thought about it that way"
@@ -165,7 +159,7 @@ suggested_target: memory or rule
 
 Avoid noise:
 
-- **Bare politeness**: "thanks" / "ok!" / "好的" / "👍" / "got it" without specific endorsement
+- **Bare politeness**: "thanks" / "ok!" / "👍" / "got it" without specific endorsement
 - **Praise of content, not Claude-move-or-framework**: "the calculator design is good" (about output, not how Claude did it)
 - **Endorsement of something but the user can't articulate WHAT pattern**: "this is great" with no specifics
 - **Single-instance aesthetic taste that won't generalize**: "this color is nice" in one specific UI

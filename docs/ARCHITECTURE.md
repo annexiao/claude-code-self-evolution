@@ -6,13 +6,13 @@ This document is the single-source map of the continuous-learning + memory + rul
 
 > Built on top of [ECC (everything-claude-code)](https://github.com/affaan-m/ECC) by Affaan Mustafa (MIT). The instinct/observer engine is ECC's; the capture-vs-judgment layer, the four-gate routing, the correction/delight capture skills, and the cost-aware `/evolve` rewrite are this project's additions. See [COMPARISON-WITH-ECC.md](COMPARISON-WITH-ECC.md) for the precise diff.
 
-> **Governance (non-negotiable):** any change to the evolution machinery, `/evolve` routing / modes / confidence, the capture skills (correction-capture / delight-capture), continuous-learning-v2, or the `pending-evolve` schema/conventions, MUST update this document in the same change set. The doc is the source of truth; code changing without the map changing means the next session reasons from a stale map. (Enforced also via global memory `feedback_evolution_changes_update_architecture_doc.md`.)
+> **Governance (non-negotiable):** any change to the evolution machinery, `/evolve` routing / modes / confidence, the capture skills (correction-capture / delight-capture), continuous-learning-v2, or the `pending-evolve` schema/conventions, MUST update this document in the same change set. The doc is the source of truth; code changing without the map changing means the next session reasons from a stale map.
 
 ---
 
 ## What this system does (one paragraph)
 
-Your Claude environment has several parallel channels for capturing learning signal during sessions, two storage tiers (raw observation vs structured candidate), one background distillation process (the Haiku observer agent), and one judgment surface (`/evolve`) that converges all signal streams into a single review gate and writes durable outputs to rules / memory / skills. The architecture follows a deliberate **capture-vs-judgment separation**: capture is cheap, dump-only, and happens automatically; judgment is deliberate, batched, and happens only when the user runs `/evolve`. As a load-bearing side benefit, `/evolve`'s accept/reject/defer decisions also serve as a free labeled corpus for evaluating upstream capture-skill quality, the eval pipeline is folded directly into `/evolve` (Step 0.5 schema inspector + Step 8 review summarizer) rather than scheduled separately, because both layers only have new signal at `/evolve` time anyway.
+Your Claude environment has several parallel channels for capturing learning signal during sessions, two storage tiers (raw observation vs structured candidate), one background distillation process (the Haiku observer agent), and one judgment surface (`/evolve`) that converges all signal streams into a single review gate and writes durable outputs to rules / memory / skills. The architecture follows a deliberate **capture-vs-judgment separation**: capture is cheap, dump-only, and happens automatically; judgment is deliberate, batched, and happens only when the user runs `/evolve`. As a load-bearing side benefit, `/evolve`'s accept/reject/defer decisions also serve as a free labeled corpus for evaluating upstream capture-skill quality, the eval pipeline is folded directly into `/evolve` (Phase 1.4 schema inspector + Phase 4.4 review summarizer) rather than scheduled separately, because both layers only have new signal at `/evolve` time anyway.
 
 ---
 
@@ -92,7 +92,7 @@ flowchart TB
  end
 
  subgraph JUDGE["JUDGMENT LAYER -- deliberate, the user triggers"]
- E1["/evolve command<br/>0.5 verify-pending-evolve (queue health, non-blocking)<br/>1. read instincts + pending-evolve<br/>2. cluster across sources<br/>3. route per cluster<br/>4. unified review gate<br/>5. write approved + archive<br/>7. log every decision to .evolve-decisions.jsonl<br/>8. review-evolve-signals --mark-reviewed (Layer 2 eval feedback)"]
+ E1["/evolve command<br/>READ: verify queue health (non-blocking) + read instincts + pending-evolve<br/>JUDGE: cluster across sources, route per cluster<br/>PROPOSE: one unified review gate (single approval)<br/>EXECUTE: write approved + archive, log every decision to .evolve-decisions.jsonl, run review-evolve-signals --mark-reviewed (Layer 2 eval feedback)"]
  end
 
  subgraph EVAL["EVAL FEEDBACK LOOP (folded into /evolve)"]
@@ -135,8 +135,8 @@ flowchart TB
  E1 --> OUT3
  E1 --> OUT4
 
- E1 -->|Step 7: append decision row| VLOG
- VLOG -.->|Step 8: review aggregates| E1
+ E1 -->|Phase 4.3: append decision row| VLOG
+ VLOG -.->|Phase 4.4: review aggregates| E1
  VSTATE -.->|read cutoff| E1
  E1 -.->|mark-reviewed| VSTATE
 
@@ -185,13 +185,13 @@ flowchart TB
 
 | Component | Trigger | What it does | Where it writes |
 |---|---|---|---|
-| **`/evolve` command** | the user invokes (suggested cadence: every few months, or when `/instinct-status` feels noisy) | (0.5) Runs `verify-pending-evolve.sh` informationally, surfaces queue health, never blocks; (1) Reads both `instincts/personal/` and `pending-evolve/`; (2) clusters across sources; (3) routes per cluster to rule / memory / skill / agent / skip; (4) runs memory promotion audit (project → global if same topic in ≥2 projects); (5) presents ONE unified review table to the user; (6) writes approved rows + archives processed pending-evolve candidates to `.processed/`; (7) appends one decision row per candidate to `.evolve-decisions.jsonl`; (8) runs `review-evolve-signals.sh --mark-reviewed` and surfaces any threshold alerts | `~/.claude/rules/`, memory dirs, `~/.claude/skills/`, `~/.claude/.agents/`, `.evolve-decisions.jsonl`, `.last-reviewed.json` |
+| **`/evolve` command** | the user invokes (suggested cadence: every few months, or when `/instinct-status` feels noisy) | **READ:** runs `verify-pending-evolve.sh` informationally (queue health, never blocks), reads both `instincts/personal/` and `pending-evolve/`; **JUDGE:** clusters across sources, routes per cluster to rule / memory / skill / agent / skip, runs the memory promotion audit (project → global if same topic in ≥2 projects); **PROPOSE:** presents ONE unified review surface (one go/skip per table); **EXECUTE:** writes approved rows + archives processed candidates to `.processed/`, appends one decision row per candidate to `.evolve-decisions.jsonl`, runs `review-evolve-signals.sh --mark-reviewed` and surfaces any threshold alerts | `~/.claude/rules/`, memory dirs, `~/.claude/skills/`, `~/.claude/.agents/`, `.evolve-decisions.jsonl`, `.last-reviewed.json` |
 
 ### Output sinks (5 destinations)
 
 | Sink | What goes here | Cost | Lifecycle |
 |---|---|---|---|
-| **`~/.claude/CLAUDE.md`** | Hard absolute rules (never use Korean, italics in blue) | Loaded into system prompt every session | Manually authored by the user; `/evolve` does NOT write here |
+| **`~/.claude/CLAUDE.md`** | Hard absolute rules (dummy examples only: `never force-push`, `prefer tabs`) | Loaded into system prompt every session | Manually authored by the user; `/evolve` does NOT write here |
 | **`~/.claude/rules/<domain>/*.md`** | Persistent "if-this-then-that" principles | Loaded contextually when relevance matches | `/evolve` appends / modifies / skips |
 | **`~/.claude/projects/<hash>/memory/feedback_*.md`** | Nuanced preferences, frameworks, calibration signals | Loaded with project context | `/evolve` writes (with optional project→global promotion) |
 | **`~/.claude/skills/<name>/SKILL.md`** | Multi-step workflows the user explicitly invokes via `/<name>` | ~37 tokens of system-prompt overhead every session forever | `/evolve` writes only if anti-bloat gate passes (no existing similar skill + ≥3 steps + user-invokable) |
@@ -309,7 +309,7 @@ sequenceDiagram
  participant State as .last-reviewed.json
 
  user->>Ev: /evolve
- Ev->>Verify: Step 0.5 queue health snapshot
+ Ev->>Verify: Phase 1.4 queue health snapshot
  Verify-->>Ev: schema summary (warnings, never blocking)
  Note over Ev: surface warnings count in working narration
 
@@ -323,11 +323,11 @@ sequenceDiagram
  Ev-->>the user: ONE unified table:<br/>cluster → decision → target → action → sources
 
  user->>Ev: "yes" / "no" / "1,3,edit-2"
- Ev->>Outs: Step 6 write approved rows
+ Ev->>Outs: Phase 4.1 write approved rows
  Ev->>Proc: move processed candidates here
- Ev->>Log: Step 7 append one decision row per candidate
+ Ev->>Log: Phase 4.3 append one decision row per candidate
 
- Ev->>Review: Step 8 review --mark-reviewed
+ Ev->>Review: Phase 4.4 review --mark-reviewed
  State-->>Review: read cutoff
  Log-->>Review: read rows since cutoff
  Review-->>Ev: summary + threshold alerts
@@ -396,26 +396,26 @@ The /evolve gate is also an eval surface for upstream capture-skill quality. Thr
 
 | Layer | What it checks | When | How | Status |
 |---|---|---|---|---|
-| **1, Shell schema** | Field presence, filename format, type/direction consistency, project_id non-empty | `/evolve` Step 0.5 | `verify-pending-evolve.sh`, informational, never blocks | ✓ implemented |
-| **2, Judgment core** | Accept / reject / defer rates per `skill_source`; top reject reasons; threshold alerts when same reason ≥ 10× | `/evolve` Step 8 (after writes + log) | `review-evolve-signals.sh --mark-reviewed` aggregates from `.evolve-decisions.jsonl` | ✓ implemented |
+| **1, Shell schema** | Field presence, filename format, type/direction consistency, project_id non-empty | `/evolve` Phase 1.4 | `verify-pending-evolve.sh`, informational, never blocks | ✓ implemented |
+| **2, Judgment core** | Accept / reject / defer rates per `skill_source`; top reject reasons; threshold alerts when same reason ≥ 10× | `/evolve` Phase 4.4 (after writes + log) | `review-evolve-signals.sh --mark-reviewed` aggregates from `.evolve-decisions.jsonl` | ✓ implemented |
 | **3, Longitudinal lift** | Did memory entries change Claude's behavior cross-session? Did the user's correction rate drop month-over-month? | Not yet implemented (revisit if Layer 2 alerts plateau) | Manual review when desired | (deferred) |
 
-### Per-run routing review report + safety thresholds (Step 5.5, added 2026-05-25)
+### Per-run routing review report + safety thresholds (Phase 3.3 to 3.4, added 2026-05-25)
 
 Complementing the cross-run Layer-2 aggregate, every `/evolve` run emits a **per-run Routing Review Report** before writing:
 
 - a **per-candidate table**: candidate_id, source_project/session, proposed_scope, routing_confidence, conflict_scan_result, final_route, reason, user-confirm-required
 - a **5-candidate random audit sample**: original text + full metadata + routing decision + reason (spot-check that routing matches content)
-- five **run metrics**: `global_promotion_rate`, `defer_rate`, `conflict_surfaced_count`, `project_specific_confirmation_count`, `user_correction_count`
+- six **run metrics**: `rule_promotion_rate`, `memory_promotion_rate`, `defer_rate`, `conflict_surfaced_count`, `project_specific_confirmation_count`, `user_correction_count` (rule-promotion and memory-promotion are separate rates: the 30% guard is about *rule* bloat, whereas frameworks-to-memory is the designed path and is not gated)
 
 Four **safety thresholds gate the write step** (a trip pauses or downgrades, never silently proceeds):
 
-1. `global_promotion_rate > 30%` → PAUSE + explain (a batch promoting >~30% to global is suspect; the global bar should rarely clear that many at once).
+1. `rule_promotion_rate > 30%` → PAUSE + explain (a batch promoting >~30% to global *rules* is suspect; the global rule bar should rarely clear that many at once). `memory_promotion_rate` is NOT subject to this gate: frameworks-to-memory is the designed path, so a framework-heavy batch legitimately shows high memory promotion.
 2. all conflict scans `none` but candidates span ≥2 projects → flag for re-check (zero conflict across a multi-project batch usually means a shallow scan).
 3. project-specific candidate without user confirmation → hard block on project rule/memory write.
 4. confidence not explainable in one sentence → default `defer`.
 
-Lightweight by design: inline in `evolve.md` Step 5.5, no new script, no capture-skill change. Guards on the four gates, not replacements. **Distinction:** Step 5.5 = per-run routing transparency + pre-write safety; Step 8 = cross-run accept/reject/defer aggregate for capture-skill quality. Canonical spec: `evolve.md` "Step 5.5".
+Lightweight by design: inline in `evolve.md` Phase 3.3 to 3.4, no new script, no capture-skill change. Guards on the four gates, not replacements. **Distinction:** Phase 3.3 to 3.4 = per-run routing transparency + pre-write safety; Phase 4.4 = cross-run accept/reject/defer aggregate for capture-skill quality. Canonical spec: `evolve.md` "Phase 3.3 to 3.4".
 
 ### Known review false-positive: convergence-reject vs noise-reject (recorded 2026-05-25)
 
@@ -427,20 +427,20 @@ Worked instance: the 2026-05-25 instinct run rejected 10 instincts as `"covered 
 
 ### The architectural insight: judgment IS the eval surface
 
-Layer 2 works because /evolve already has to make an accept/reject/defer decision per candidate. **That decision is the same labeling task you'd otherwise need to crowdsource for an eval corpus.** By logging the decision stream to `.evolve-decisions.jsonl` (Step 7), the labeled corpus accumulates as a free side effect of normal use. No external testing infrastructure needed; no separate annotation pass.
+Layer 2 works because /evolve already has to make an accept/reject/defer decision per candidate. **That decision is the same labeling task you'd otherwise need to crowdsource for an eval corpus.** By logging the decision stream to `.evolve-decisions.jsonl` (Phase 4.3), the labeled corpus accumulates as a free side effect of normal use. No external testing infrastructure needed; no separate annotation pass.
 
 This is the architectural payoff of capture-vs-judgment separation. The separation was originally proposed for UX reasons (batch the user's review burden at one moment rather than per-skill). But the separation also concentrates ALL judgment decisions through a single gate, and once they're concentrated, logging them is cheap and the log IS the labeled corpus.
 
 ### How the loop closes itself
 
 ```
-pending-evolve/ → /evolve reads (Step 0) → routes per candidate (Steps 1 to 5)
+pending-evolve/ → /evolve reads (Phase 1) → routes per candidate (Phases 2 to 3)
  ↓
- writes: rule / memory / skill / agent / skip (Step 6)
+ writes: rule / memory / skill / agent / skip (Phase 4.1)
  ↓
- logs: .evolve-decisions.jsonl row per decision (Step 7)
+ logs: .evolve-decisions.jsonl row per decision (Phase 4.3)
  ↓
- Step 8: review-evolve-signals --mark-reviewed aggregates → threshold alert if reject_reason ≥ 10×
+ Phase 4.4: review-evolve-signals --mark-reviewed aggregates → threshold alert if reject_reason ≥ 10×
  ↓
  surfaces in final /evolve summary → the user sees "correction-capture's 'too narrow' reject pattern repeating"
  ↓
@@ -458,7 +458,7 @@ Earlier proposals considered (a) a SessionStart hook running verify on every ses
 - **Verify only matters at /evolve time.** Schema drift in `pending-evolve/*.md` has zero downstream effect until /evolve reads those files. Running verify in sessions where /evolve will never be invoked pays cost without proportional value.
 - **Review only has new signal when /evolve runs.** `.evolve-decisions.jsonl` only grows when /evolve appends rows. A weekly review run in a week where /evolve was invoked zero times produces the same report as last week.
 
-Both scripts are **user-pull, not clock-push**. Their natural cadence is "whenever /evolve runs." Folding them into /evolve Steps 0.5 and 8 gives:
+Both scripts are **user-pull, not clock-push**. Their natural cadence is "whenever /evolve runs." Folding them into /evolve Phases 1.4 and 4.4 gives:
 
 - Single user-touched surface (no hidden timers / launchd state to maintain)
 - Eval signal timing aligned with new-data timing
@@ -475,7 +475,36 @@ The scripts remain runnable standalone (for ad-hoc inspection), but `/evolve` is
 
 All timestamps are UTC Z-form (load-bearing, review script uses `jq fromdate` which only parses Z-form). Schema is forward-extensible; new fields can be added without breaking the review script.
 
-The `decision_reason` field uses canonical short phrases (`"too narrow"`, `"performative self-criticism"`, `"singleton awaiting cluster"`, etc.) rather than freeform prose, so aggregation by reason works. Full canonical set is documented in `~/.claude/commands/evolve.md` Step 7.
+The `decision_reason` field uses canonical short phrases (`"too narrow"`, `"performative self-criticism"`, `"singleton awaiting cluster"`, etc.) rather than freeform prose, so aggregation by reason works. Full canonical set is documented in `~/.claude/commands/evolve.md` Appendix A.
+
+### Enforcement debt: triage first, then fork by mechanizability (added 2026-07-15)
+
+A candidate rejected as `"covered by existing rule"` is not always noise. When the rule was in context and the same failure happened anyway, that recurrence-despite-a-rule is the highest-value signal that a rule is prose-in-name-only. `/evolve` mines these rows for **enforcement debt**: on every covered row it stamps `mapped_rule_clause` (which sub-clause was duplicated) and `would_have_prevented` (a counterfactual: would that rule, if actually followed, have stopped this failure?). Debt per clause = count of `would_have_prevented=yes` rows grouped by clause. A clause whose projected debt reaches ~3 to 4 becomes a **graduation candidate**, surfaced for the user to approve; `/evolve` never auto-rewrites a rule.
+
+An earlier design used a single "make the rule harder" ladder. It was falsified on 2026-07-09 and replaced with a **two-step triage-then-fork model**:
+
+**Step 1, triage the failure (debt is 3-dimensional, not a scalar).** The same symptom ("rule violated") has three causes that need opposite fixes:
+
+| Cause | Signature | Fix direction |
+|---|---|---|
+| **Plumbing** | the rule was never IN context that turn (evicted, not reloaded after compaction) | fix LOADING, not the rule |
+| **Steerability** | the rule was in context, acknowledged, and ignored anyway | move to a real enforcement point (Step 2) |
+| **Over-scoping** | the rule fired on a legitimately-different case (recurrence with no real harm) | DE-escalate: narrow the trigger or demote severity |
+
+Only **steerability** debt escalates. Plumbing routes to a loading fix; over-scoping routes to a narrowing proposal. Misclassifying either as steerability is how a system over-hardens rules that were never the problem.
+
+**Step 2, for steerability debt, fork by mechanizability** (not one ladder):
+
+| Rule shape | Enforcement home |
+|---|---|
+| Deterministically checkable (banned phrase, file-exists) | deterministic hook / linter / permission-deny |
+| Judgment, not mechanizable (is this claim backed by a real check?) | `prompt`-type or `agent`-type hook (a cheap model judges the rule text at each matching event), NOT another prose line |
+| Bounded to a file type / domain | path-scoped rule (`paths:` frontmatter), loads only when relevant |
+| Genuinely cross-cutting judgment | one sharp always-loaded line, backed by a prompt-hook if debt persists |
+
+The key correction: a pure-judgment rule cannot be made deterministic, so compressing it to a shorter prose line and putting it back into the always-on prompt is the same "context, not enforcement" bucket that caused the recurrence. A prompt-hook gives the judgment call a real enforcement point without forcing false decomposition. A rule that is really N sub-behaviors is decomposed (hook the mechanizable parts, path-scope the bounded ones, leave only the irreducible-judgment core as prose), not climbed. Canonical spec: `~/.claude/commands/evolve.md` Appendix B.
+
+Most heavier machinery (weighted/decayed debt scoring, adversarial regression suites, a meta-critic on `/evolve`'s own routing) is explicitly deferred until a concrete trigger fires: at solo scale, small-N scoring is statistical theater and the upkeep lands on one person. This is the same build-vs-preserve restraint the system applies to itself.
 
 ---
 
@@ -483,7 +512,7 @@ The `decision_reason` field uses canonical short phrases (`"too narrow"`, `"perf
 
 ```
 ~/.claude/
-├── SELF-EVOLUTION-ARCHITECTURE.md ← this file
+├── ARCHITECTURE.md ← this file
 ├── CLAUDE.md ← hard rules, the user hand-authored
 ├── settings.json ← hooks configured here (the harness contract)
 ├── rules/ ← /evolve writes here (rule output)
@@ -531,8 +560,8 @@ The `decision_reason` field uses canonical short phrases (`"too narrow"`, `"perf
 │ ├── correction-self-correction-*.md (D2 candidates)
 │ ├── delight-claude-move-*.md (D1 candidates)
 │ ├── delight-aha-framework-*.md (D2 candidates)
-│ ├── .evolve-decisions.jsonl ← Step 7: append-only labeled corpus of /evolve decisions
-│ ├── .last-reviewed.json ← Step 8: cursor for review-evolve-signals.sh window
+│ ├── .evolve-decisions.jsonl ← Phase 4.3: append-only labeled corpus of /evolve decisions
+│ ├── .last-reviewed.json ← Phase 4.4: cursor for review-evolve-signals.sh window
 │ └── .processed/ ← /evolve archives processed candidates here
 ├── projects/
 │ ├── <your-home-project>/memory/ ← "global" feedback memory (home-root project)
@@ -545,8 +574,8 @@ The `decision_reason` field uses canonical short phrases (`"too narrow"`, `"perf
 │ └── <project-folder>/memory/ ← project-scoped feedback memory
 ├── scripts/
 │ ├── apply-instinct-decay.py ← LOCAL: weekly decay (replaces Haiku prompt-based decay)
-│ ├── verify-pending-evolve.sh ← LOCAL: Layer 1 schema inspector, invoked by /evolve Step 0.5
-│ ├── review-evolve-signals.sh ← LOCAL: Layer 2 review summarizer, invoked by /evolve Step 8
+│ ├── verify-pending-evolve.sh ← LOCAL: Layer 1 schema inspector, invoked by /evolve Phase 1.4
+│ ├── review-evolve-signals.sh ← LOCAL: Layer 2 review summarizer, invoked by /evolve Phase 4.4
 │ └── hooks/ (hook helpers)
 ├── session-data/ ← /save-session writes session-state files here
 │ └── YYYY-MM-DD-HHMM-*-session.tmp
@@ -584,7 +613,7 @@ Several pieces of this system are **local customizations** that diverge from ups
 
 | File | What's customized | Backup |
 |---|---|---|
-| `~/.claude/skills/continuous-learning-v2/agents/observer.md` | Decay logic removed (delegated to Python script) | `~/.claude/_archive/observer-patches/observer.md.original-20260522` |
+| `~/.claude/skills/continuous-learning-v2/agents/observer.md` | Decay logic removed (delegated to Python script) | Local backup kept before the patch |
 | `~/.claude/commands/evolve.md` | Cross-source clustering (instincts + pending-evolve); rule + memory as output channels; anti-bloat gate; single unified approval; memory promotion logic | Stored in this file's git history (when committed); also archived if needed |
 | `~/.claude/skills/correction-capture/SKILL.md` | Local-only skill (not in upstream), D1 + D2 dump-only | n/a (local original) |
 | `~/.claude/skills/delight-capture/SKILL.md` | Local-only skill (not in upstream), D1 + D2 dump-only | n/a (local original) |
@@ -595,7 +624,7 @@ Several pieces of this system are **local customizations** that diverge from ups
 | `~/.claude/homunculus/config.json` | `observer.enabled: true`, custom interval/threshold | n/a (this is config, regenerated by user) |
 | `~/.claude/CLAUDE.md` "Skill chaining" section | Documents the capture chain + capture-vs-judgment separation | Stored in this file's git history |
 
-Some of these (decay-split, rule output channel, conversation capture) are candidates for upstream PRs to ECC. See Discussion drafts archived in pending-evolve and the session log `2026-05-22-*-session.tmp`.
+Some of these (decay-split, rule output channel, conversation capture) are candidates for upstream PRs to ECC.
 
 ---
 
@@ -622,8 +651,8 @@ Some of these (decay-split, rule output channel, conversation capture) are candi
 - **UserPromptSubmit hook for conversation capture**: not yet implemented (would be Discussion #3 to ECC if pursued). Capture skills cover this gap via session-end batch.
 - **Auto-delete of personal/ instincts at low confidence**: not implemented; manual `rm` is the cleanup mechanism. Pending instincts auto-delete at 30 days but personal ones don't.
 - **Confidence threshold for `/evolve` to consider an instinct**: no hard floor; cluster size + cross-source evidence matters more than single-instinct confidence.
-- **SessionStart hook running verify-pending-evolve.sh**: considered, rejected. Schema drift only matters at /evolve time; running on every session would pay cost without proportional value. Verify is folded into /evolve Step 0.5 instead.
-- **Weekly launchd job running review-evolve-signals.sh**: considered, rejected. Review only has new signal when /evolve has logged new decisions; running on a clock would produce stale repeats. Review is folded into /evolve Step 8 instead.
+- **SessionStart hook running verify-pending-evolve.sh**: considered, rejected. Schema drift only matters at /evolve time; running on every session would pay cost without proportional value. Verify is folded into /evolve Phase 1.4 instead.
+- **Weekly launchd job running review-evolve-signals.sh**: considered, rejected. Review only has new signal when /evolve has logged new decisions; running on a clock would produce stale repeats. Review is folded into /evolve Phase 4.4 instead.
 - **Strict-mode verify-pending-evolve.sh that blocks /evolve**: considered, rejected. /evolve absorbs legacy-schema files via Claude's flexible markdown reading; strict schema enforcement at the verify layer would block legitimate processing. Verify runs informational, never blocks.
 - **Legacy file migration / archival on schema change**: considered, rejected. When schema evolves, legacy files in `pending-evolve/` stay in place; the next /evolve absorbs and archives them to `.processed/` naturally. No manual cleanup step.
 
@@ -666,4 +695,4 @@ ls -lt ~/.claude/homunculus/instincts/personal/ | head -5
 ~/.claude/scripts/review-evolve-signals.sh --all
 ```
 
-If commands 1 to 5 return sensible output → core system is operational. Commands 6 to 7 are ad-hoc inspectors; the canonical trigger for both is `/evolve` Steps 0.5 and 8.
+If commands 1 to 5 return sensible output → core system is operational. Commands 6 to 7 are ad-hoc inspectors; the canonical trigger for both is `/evolve` Phases 1.4 and 4.4.

@@ -4,524 +4,286 @@ description: Cluster instincts AND conversation-derived candidates from `~/.clau
 command: true
 ---
 
-# Evolve Command (auto-judge, single-confirmation variant, two-source)
+# Evolve Command (auto-judge, single-confirmation, two-source)
 
-## Pre-Run: Read All ADRs (including Superseded)
+Reads two signal streams (tool-call instincts from continuous-learning-v2, and conversation-derived candidates in `~/.claude/pending-evolve/`, written by `correction-capture` + `delight-capture`), clusters across them, routes each cluster to the cheapest durable artifact that holds it, and asks the user for exactly ONE approval covering every proposed write. Full provenance vs upstream ECC: Appendix D.
 
-Before evolving patterns into rules/skills, scan **all** ADRs in `docs/decisions/` of the current project, not only those marked `Accepted`. ADRs marked `Superseded by ...` carry the constraints and rejected alternatives that shaped the current state, and those constraints often still apply. The audit trail is the value, not just the latest answer. Skipping superseded ADRs means re-suggesting patterns that have already been tried and rejected.
+The run is four phases, each an ordered checklist: **READ, JUDGE, PROPOSE, EXECUTE**. The single approval sits at the end of PROPOSE; nothing durable is written before it, and no new proposals may surface after it.
 
-This is a customized version of the ECC `/evolve` flow. Compared to the default ECC behavior (which auto-writes evolved skill/command/agent files on `--generate` from instincts only), this version:
-- Reads BOTH instincts AND the `~/.claude/pending-evolve/` queue (conversation-derived candidates from `correction-capture` + `delight-capture`)
-- Clusters across both source streams (cross-pollination)
-- Adds **rule** and **memory** as output channels alongside skill / agent
-- Uses judgment to route per cluster, audits existing files for the right target
-- Presents ONE unified plan for the user to approve once
+## Modes (determine FIRST, this scopes everything below)
 
-## Routing modes & confidence gating (READ FIRST, added 2026-05-25)
-
-`/evolve` runs in one of three modes. Default (bare `/evolve`) = **global**. The mode decides what is *read*, what is *written*, and what stays put. This layer governs everything below, the Steps that follow are the **global mode** body; inbox and project modes are narrower.
-
-| Mode | Reads | Writes | Gate |
+| Mode | Reads | May write | Gate |
 |---|---|---|---|
-| **`/evolve inbox`** | all root `pending-evolve/*.md` | **nothing**, classifies, stamps `routing_confidence`, moves high-confidence project-specific candidates to project queues, proposes |, |
-| **`/evolve global`** (default) | candidates that are `routing_confidence: high` AND (clearly cross-project-general OR recurring in ≥2 projects/sessions) | global rule / memory | high-confidence gate |
-| **`/evolve project`** | current-repo candidates (root inbox filtered by `project_id` + that project's own queue), repo via `git rev-parse` | project rule / memory **only after explicit user confirmation** | high-confidence + user confirm |
+| **`/evolve`** (default, sweeps everything) | instincts + ALL root `pending-evolve/*.md` + EVERY project queue `~/.claude/projects/*/pending-evolve/*.md`. One run covers global AND all projects, so the user never has to `cd` into a repo to evolve it. | global rules/memory AND, per project, that project's rules/memory | Confidence gate for global; Confidence + **per-project** user confirm for each project's writes |
+| **`/evolve inbox`** | all root `pending-evolve/*.md` | **no durable artifacts** (no rules/memory/skills/agents). Queue-internal bookkeeping only: stamps `routing_confidence` into candidate frontmatter and moves high-confidence project-specific candidates to that project's queue. Proposes Scope-gate outcomes; writes nothing else. | (none) |
+| **`/evolve project`** | current repo only (root inbox filtered by `project_id` + the project's own queue); repo via `git rev-parse --show-toplevel` | that project's rule/memory, **ONLY after explicit user confirmation** | Confidence + user confirm |
 
-### `routing_confidence` (assigned by `inbox`, NOT by capture)
+**Default-mode output structure (added 2026-07-15).** The default run does NOT collapse everything into one table. It produces **one GLOBAL plan table + one separate plan table per project** that has surviving candidates. Each table is labeled with its scope (`GLOBAL` / `project=<name>`) so the user always knows which context they are judging in. **Each table gets its OWN go/skip decision**, never one blanket "yes" spanning global + N projects (that is the rubber-stamp failure the per-project confirmation invariant exists to prevent). When the run touches a project, read that project's ADRs (Phase 1.6) before proposing its table. `location does not equal scope`: a candidate physically in the root inbox with `proposed_scope: project=X` is only a *hint*; the Scope gate decides its real home, and a project-captured lesson that is actually cross-project-general routes GLOBAL (that is correct, not a bug).
 
-Confidence is a **judgment**, so it is stamped by `/evolve` (inbox mode, or inline during a global/project run), never by the capture skills, capture records only facts (`project_id`, `captured_from_session`, `proposed_scope`). Levels:
-
-- **high**, clearly cross-project-general, OR recurs in ≥2 sessions/projects, OR the user meta-corrected it
-- **medium**, plausibly general but single-instance and not obviously universal
-- **low / unclear**, scope can't be attributed with confidence
-
-### The four gates (every candidate passes all four, in order)
-
-A candidate becoming durable must clear four gates in sequence. Failing a gate stops promotion, it is not retried at a higher tier.
-
-**1. Source gate, where did this come from?**
-Every candidate carries source facts recorded by capture (facts, not judgment): `project_id` / `project_name` / `captured_from_session` / `proposed_scope`. If the source is unattributable, scope can't be reasoned about → defer. (root `pending-evolve/` is a neutral inbox; landing there confers nothing.)
-
-**2. Confidence gate, how strong is the evidence?**
-`routing_confidence` is stamped here (judgment, not capture): **high** = clearly cross-project-general OR ≥2 *agreeing* projects/sessions OR the user meta-corrected; **medium** = plausible but single-instance; **low/unclear** = scope unattributable. Only **high** may proceed toward global; medium/low/unclear → defer.
-
-> **Recurrence-gating is for CORRECTIONS, not for FRAMEWORKS (a category error to avoid).** The "single-instance, defer until it recurs" rule above is calibrated for **behavioral-pattern corrections**: a correction needs ≥2 occurrences to confirm it is a *real systemic issue* and not a one-off slip. **It does NOT apply to strategic frameworks / mental models**, the `delight-aha-framework` (and most `delight-claude-move`) candidates. A transferable insight is valuable on its **first articulation**, it does not need to recur to prove it is real, *because it is a lens, not a flaky pattern.* Treating an aha like a flaky test, withholding it until it repeats, is a category error that silently drops the **highest-value signal** /evolve exists to capture. So:
-> - For `type: delight-aha-framework` / `delight-claude-move`: **single-instance is sufficient** for promotion to **memory** (the framework channel). Judge them on **transferability and durability**, NOT recurrence count.
-> - For corrections (`type: correction`): recurrence remains the bar for becoming a **rule** (a one-off correction may still be a one-off, ≥2 confirms it is systemic).
-> - Mnemonic: **recurrence is the bar for corrections to rules; transferability is the bar for frameworks to memory.** Never gate a framework on recurrence.
-
-**3. Conflict gate, is there a counterexample or boundary conflict? (a VETO, not a score)**
-Before promoting, scan other projects' memory/candidates/instincts AND existing `rules/` for a contradicting entry (¬X). This gate is **asymmetric**: a single genuine counterexample outweighs many agreements, because the claim under test is "this is *globally* true" and one counterexample refutes universality.
-- **Any genuine conflict VETOES global promotion**, it does not merely lower confidence. The candidate is not discarded; it is reclassified `context-dependent` and handed to the Scope gate for project-scoping.
-- **Conflict with an EXISTING global rule MUST be surfaced loudly**, never silently write a rule that contradicts one already in `rules/`. Otherwise the ruleset slowly grows self-contradictory. Resolution is the user's call: either the existing global rule was over-generalized and gets scoped down, or the new candidate is context-specific. Report it; do not auto-resolve.
-
-**4. Scope gate, global / project / context-dependent / defer?**
-- cleared gates 1 to 3, high-conf, cross-project, no conflict → **global** rule/memory.
-- high-conf but project-specific, OR conflict-vetoed from global → **project (context-dependent)**: written to that project's scope with the boundary/conflict noted, and **only after explicit user confirmation** (or the user saying "this is a project rule"). Never auto-write a project rule.
-- medium/low/unclear, OR an unresolved conflict → **defer** (stay in root inbox; move only a high-confidence project-specific candidate to `~/.claude/projects/<project_id>/pending-evolve/`).
-
-`/evolve inbox` runs gates 1 to 3 and proposes a Scope-gate outcome, but **writes nothing**, classification only.
-
-### Per-project queue convention
-
-- `~/.claude/pending-evolve/` = global candidates + unsorted inbox
-- `~/.claude/projects/<project_id>/pending-evolve/` = candidates judged project-specific (created on first move)
-
-### Why this layer exists
-
-Before this, capture always dumped to one global root queue and `/evolve` treated everything there as a global candidate, so a mixed queue of project + global candidates got blind-routed, risking project-specific or low-context candidates becoming global rules. The confidence gate + per-project queues make **default defer** the safe baseline: nothing becomes global or project-durable without clearing an explicit bar. Source: 2026-05-25 routing-layer design discussion.
+Queue convention: root `~/.claude/pending-evolve/` = global candidates + unsorted inbox; `~/.claude/projects/<project_id>/pending-evolve/` = candidates judged project-specific (created on first move). `.processed/` under each = archive of handled candidates.
 
 ## Core principles (apply yourself, don't ask)
 
-1. **Default to cheaper artifacts.** Cost hierarchy from cheap to expensive:
-   - rule (a few lines in markdown, loaded only when context matches) ← cheapest
-   - memory (nuanced feedback entry in `~/.claude/projects/.../memory/`) ← cheap
-   - skill (~37 tokens system-prompt overhead every conversation forever) ← expensive
-   - agent (new file in agents/ marketplace surface) ← most expensive
+1. **Default to cheaper artifacts.** Cost hierarchy, cheap to expensive: **rule** (markdown, loaded when context matches), then **memory** (recall-gated note in `~/.claude/projects/.../memory/`), then **skill** (~37 tokens of system-prompt cost every conversation forever), then **agent**. "Persistent if-this-then-that principle" goes to rule. "Nuanced preference / framework from conversation" goes to memory. Skill only for true multi-step workflows the user would explicitly invoke. Agent only for genuinely separable roles. (**`command` is deliberately NOT in this hierarchy and NOT a routing target**: the user does not use slash-commands as promotion destinations, and the routing tree in 2.3 writes rule/memory/skill/agent only. Removed 2026-07-15 because a leftover `command` rung caused real confusion about whether `/evolve` routes there. It does not.)
+2. **Don't ask "which output channel?" per cluster.** Make the call with the decision tree in JUDGE.
+3. **One review surface, per-table confirmation.** The user reviews a single unified surface at the end of PROPOSE (the global table + one table per project). They give a **separate go/skip per table**: global gets its own, each project gets its own, so they are always confirming inside that scope's context. Within a table they may skip individual rows. No per-item questions before the surface; no new proposals after it.
+4. **Report every bucket.** The final summary's buckets (accepted / rejected / deferred / kept-as-instinct) must sum to the number of candidates evaluated. Name the defer/no-action residual explicitly with its count: it is often the largest bucket and the easiest to omit. (The user, 2026-06-27, noting the defer bucket is the one usually left out.)
 
-   For "persistent if-this-then-that principle" → **rule**. For "nuanced preference / framework I learned in conversation" → **memory**. Reserve skill for true on-demand multi-step workflows the user would explicitly invoke. Reserve agent for genuinely separable specialized roles.
+---
 
-2. **Don't ask the user "which output channel?" per cluster.** Make the call. Use the decision tree below.
+## Phase 1: READ
 
-3. **Confirm once, at the end, with everything visible.** The user reviews a single table of proposed writes and says "go" or selectively rejects. No per-item questions during the planning phase.
+**1.1 Determine mode** (table above). All later steps are scoped by it.
 
-## Step 0, Read both sources
-
-### Source A: Instincts (tool-call patterns)
+**1.2 Read Source A, instincts:**
 
 ```bash
 python3 ~/.claude/skills/continuous-learning-v2/scripts/instinct-cli.py evolve
 ```
 
-(or `${CLAUDE_PLUGIN_ROOT}/skills/continuous-learning-v2/scripts/instinct-cli.py evolve` if `CLAUDE_PLUGIN_ROOT` is set.)
+(or `${CLAUDE_PLUGIN_ROOT}/skills/continuous-learning-v2/scripts/instinct-cli.py evolve` if set.) Identify: clusters of related instincts; high-confidence singletons (>= 0.7); promotion candidates (same instinct in 2+ projects, global rule candidates by default).
 
-Read the output and identify:
-- **Clusters** of related instincts
-- **High-confidence singletons** (≥0.7) representing a single rule
-- **Promotion candidates**, same instinct in 2+ projects with high confidence (these are global rule candidates by default)
+**1.3 Read Source B, the candidate queue** for this mode's scope (skip `.processed/`). Read every file's body, not just frontmatter. Frontmatter fields: `type` (`correction` | `delight-claude-move` | `delight-aha-framework`), `topic`, `captured_at`, `captured_from_session`, `source`, `project_id`, `proposed_scope` (a capture-time hint, NEVER final), `suggested_target` (hint).
 
-### Source B: Conversation-derived candidates (`~/.claude/pending-evolve/`)
+> **Gotcha (added 2026-07-16, after a real mis-read):** `project_id` holds a **hash** (e.g. `56c3ccd64e46`), NOT the project name; the readable name is in the separate `project_name` field (e.g. `auto-apply`). To filter/count candidates by project, grep `project_name`, or map the hash first: `grep 'project_id: <name>'` returns 0 and falsely reads as "no project candidates." Also: candidates carry their scope in **frontmatter**, not in a physical per-project `pending-evolve/` subdir (those are created only on first move), so "no project subdir exists" does not mean "no project candidates." Get the real distribution with `grep -h '^project_name:' *.md | sort | uniq -c`.
 
-```bash
-ls ~/.claude/pending-evolve/*.md 2>/dev/null
-```
-
-(skip `.processed/`, that's the archive of already-handled candidates)
-
-Read every `*.md` file in the directory. Each is a self-contained candidate with frontmatter describing:
-- `type`: `correction` | `delight-claude-move` | `delight-aha-framework`
-- `topic`: kebab-slug
-- `captured_at`, `captured_from_session`, `source`
-- `proposed_scope`: hint from the capture skill (not final, `/evolve` can override)
-- `suggested_target`: hint (`memory` | `rule` | `CLAUDE.md` | `undetermined`)
-
-Group these candidates by topic similarity (don't trust the topic slug alone, read the body and judge).
-
-### Cross-source clustering (the architectural payoff)
-
-After reading both sources independently, check for **cross-pollination**: does a `pending-evolve/` candidate cluster with one or more instincts about the same topic?
-
-Example: a tool-call instinct "user often Edits CSS to remove !important" + a pending-evolve `correction-no-inline-important` candidate → these are one cluster, not two. Both alone might be borderline; together they're a clear rule.
-
-Cross-source clusters get **higher priority** in routing decisions (more evidence, stronger signal).
-
-## Step 0.5, Queue health snapshot (informational, non-blocking)
-
-Run `~/.claude/scripts/verify-pending-evolve.sh` to get a Layer 1 schema summary of `pending-evolve/`. **This is informational only, never blocks /evolve from proceeding.** Output goes into the working memory of this /evolve run so the final summary can note queue health.
+**1.4 Queue health snapshot** (informational, never blocks):
 
 ```bash
 ~/.claude/scripts/verify-pending-evolve.sh
 ```
 
-What to do with the output:
+Print the `Files: N total / Warnings: K` line in the run narration. Legacy-schema warnings are ignorable for routing (bodies are read flexibly in 1.3). Genuine errors (missing dir/jq) get surfaced, ask whether to abort.
 
-- **Files: N total, M checked + Warnings: K**, print this line near the start of /evolve's working narration so the user sees queue health at a glance.
-- **Warnings about legacy-schema files** (missing fields, old `type: delight-aha-framework` combined, filename prefix unrecognized, `direction: 1` instead of `D1`, etc.), **ignore for routing purposes**. Claude reads each markdown file flexibly in Step 0, infers what's missing, and routes based on body content. Legacy drift does not affect /evolve's ability to process.
-- **Genuine ERRORS** (currently script never emits these; reserved for catastrophic cases like missing dir / missing jq), surface to the user and ask whether to abort the run.
+**1.5 Historical enforcement-debt readout.** Over the existing `~/.claude/pending-evolve/.evolve-decisions.jsonl` (before this run appends anything), filter rows where `decision_reason == "covered by existing rule"` AND `would_have_prevented == "yes"`, group by `mapped_rule_clause`, note per-clause counts. This is each clause's standing **enforcement debt**. Cold start (no log / no such rows) is fine: note "no debt data" and move on. Full debt semantics + the graduation ladder: Appendix B.
 
-This step is the **upstream-quality eyeball**, not a gatekeeper. The capture skills evolve over time; legacy files in the queue are absorbed naturally by Claude in Step 0.
+**1.6 (project mode only) Read ALL ADRs in the repo's `docs/decisions/`, including `Superseded` ones.** Superseded ADRs carry the constraints and rejected alternatives that shaped the current state; skipping them means re-proposing patterns already tried and rejected. (Global mode reads no project ADRs.)
 
-## Step 1, For each candidate / cluster, decide routing
-
-### Decision tree
-
-```
-Is this a hard, never-bend rule the user authored before this session?
-   (e.g. existing entries in ~/.claude/CLAUDE.md)
-   → IGNORE, already covered, don't duplicate
-
-Is this an "if-this-then-that" persistent principle?
-   (e.g. "always validate input", "prefer functional style",
-    "tests before implementation", "italics in blue")
-   YES → RULE  (cheapest persistent artifact)
-
-Is this a nuanced preference / framework that came from conversation,
-   doesn't need to be a hard rule, but should persist?
-   (e.g. "default to terse unless asked for detail", "reach for
-    grounded analogies when explaining systems", "audit fabricated
-    specifics in public-bound text")
-   YES → MEMORY  (the user's nuanced-guidance channel)
-
-Is this a multi-step workflow the user would explicitly type
-   /<name> to invoke?
-   AND ≥3 distinct steps?
-   AND no existing skill already covers it?
-   YES → SKILL
-
-Is this a complex, separable specialized role (e.g. a domain expert
-   for a particular framework) that deserves its own context window?
-   YES → AGENT
-
-Else → SKIP
-```
-
-**Tiebreak rule**: when uncertain between rule and memory, prefer rule (more discoverable, applied automatically). When uncertain between memory and skill, prefer memory (cheaper).
-
-**Skill anti-bloat gate** (mandatory before proposing skill):
-
-```bash
-ls ~/.claude/skills/ | head -50                          # local skills
-ls ~/.claude/.agents/skills/ 2>/dev/null | head          # agent-mode skills
-grep -l "<topic-keyword>" ~/.claude/skills/*/SKILL.md    # similar-topic match
-```
-
-If a similar skill exists → propose modifying it, not creating a new one. If after this check the cluster doesn't pass all 3 conditions in the SKILL branch above → demote to RULE or MEMORY.
-
-## Step 2, For each RULE, pick scope and file (no asking)
-
-### Scope
-
-Default to **global** when:
-- Cross-project promotion candidate (already in 2+ projects)
-- Universal engineering principle (testing, security, code review, immutability, error handling, naming, etc.)
-- Framework/language-agnostic
-
-Default to **project** when:
-- Specific to this codebase's conventions or domain
-- References project-specific paths, models, or business logic
-- Stack-specific in a way that conflicts with how other projects work
-
-When uncertain → **global**. Easier to demote global → project later than the reverse.
-
-### Target file
-
-For **global** rules:
-1. List `~/.claude/rules/` subdirectories: `common/`, `web/`, `python/`, `typescript/`, `golang/`, `swift/`, `php/`, `zh/` (skip `zh/`, translations only).
-2. Pick the most domain-specific subdirectory that fits.
-3. List markdown files in that subdirectory and read their top-level headings (first 30 lines of each is enough).
-4. Pick the file whose existing topic best matches.
-
-For **project** rules:
-1. Detect repo root: `git rev-parse --show-toplevel`
-2. Convention check (in order):
-   - `<root>/.claude/rules/*.md` (subdirectory convention)
-   - `<root>/CLAUDE.md` (single-file convention, most common)
-3. If neither exists → propose creating `<root>/CLAUDE.md`.
-
-### Append vs modify vs skip
-
-Read the chosen file in full. Decide:
-- New principle → **append** under the most relevant existing heading, or with a new heading if no fit
-- Refines / nuances an existing entry → **modify** that entry in place
-- Direct duplicate of existing entry → **skip** (don't double-write)
-
-## Step 3, For each MEMORY, pick scope and file (with promotion logic)
-
-### Memory promotion logic (project → global)
-
-**Mirror continuous-learning-v2's instinct promotion pattern**: when the same memory topic appears in multiple projects, it's a candidate for promotion to global. Before finalizing scope for a memory candidate, run this audit:
-
-```
-For the topic of the current candidate:
-  1. grep ~/.claude/projects/*/memory/feedback*<similar-topic>*.md
-  2. Also grep ~/.claude/projects/<your-home-project>/memory/feedback*<similar-topic>*.md (existing global memory)
-```
-
-Routing decisions based on what the audit finds:
-
-| What the audit finds | Routing |
-|---|---|
-| Topic doesn't exist anywhere yet | Use candidate's `proposed_scope` (project or global based on capture skill's hint) |
-| Topic exists in **1 project memory** + current candidate is from a **different project** | **PROMOTION candidate** → write to global, propose deleting / merging old project entry, surface decision in the unified review table |
-| Topic exists in **2+ project memories** (cross-project pattern) | **AUTO-PROMOTE** to global, propose archiving the project entries (move to `.processed/` rather than delete, in case the user wants them back) |
-| Topic exists in **global memory** already | SKIP (already promoted), OR propose modifying the existing global entry if the new candidate adds nuance |
-| Topic exists in **same project memory** already | UPDATE-IN-PLACE candidate → propose modifying the existing entry in that project |
-
-Promotion thresholds (mirror instinct-cli constants):
-- `PROMOTE_MIN_PROJECTS = 2` (same as continuous-learning-v2): 2+ projects with similar topic
-- For memory there's no `confidence` field to threshold on, but the existence-in-multiple-projects signal substitutes, "this pattern surfaced in 2+ contexts" implies cross-project relevance
-
-Project-id matching: use the `project_id` field in pending-evolve candidate frontmatter (the 12-char hash from continuous-learning-v2's project detection) for stable cross-session clustering. If `project_id` is "global", treat the candidate as cross-project by intent.
-
-### Scope (after promotion audit)
-
-After running the audit above, the final scope decision:
-
-- **Promote to global** (from audit table above) → `~/.claude/projects/<your-home-project>/memory/feedback_<topic>.md`
-- **Stays project-scoped** when:
-  - Pattern only surfaced in 1 project AND clearly references specific codebase / domain / conventions
-  - The pending-evolve candidate's `proposed_scope` is `project=<name>` and topic isn't seen elsewhere
-  - Target: `~/.claude/projects/<project-hash>/memory/feedback_<topic>.md`
-- **Stays global** when:
-  - Candidate's `proposed_scope` is `global` AND topic doesn't exist locally elsewhere
-
-When uncertain → prefer global (easier to demote later than to find a missed cross-project rule).
-
-### Target file
-
-- Global: `~/.claude/projects/<your-home-project>/memory/feedback_<kebab-topic>.md`
-- Project: `~/.claude/projects/<project-hash>/memory/feedback_<kebab-topic>.md`
-
-File-name prefixes (preserve from capture skill output):
-- Correction-derived: `feedback_<topic>.md` (default)
-- Delight Direction 1 (Claude move to replicate): `feedback_reinforce_<topic>.md`
-- Delight Direction 2 (aha framework): `feedback_framework_<topic>.md`
-- Correction Direction 2 (Claude self-correction): `feedback_self_<topic>.md` (distinguishes from external user-correction)
-
-### Memory file body shape (mirror existing memory style)
-
-```markdown
----
-name: <kebab-slug>
-description: <one-line, used for relevance matching>
-metadata:
-  type: feedback
-  polarity: avoid | reinforce | framework
 ---
 
-<Rule / framework statement (1-2 sentences)>
+## Phase 2: JUDGE
 
-**Why:** <Specific reason or past incident.>
+**2.1 Cluster.** Group Source-B candidates by topic (read bodies; don't trust slugs). Then check **cross-source clusters**: a queue candidate + instinct(s) on the same topic are ONE cluster, and get higher routing priority, two weak signals from independent streams are strong evidence. (Worked example: Appendix C.)
 
-**How to apply:** <When / where this fires.>
+**2.1b Semantic conflict scan (added 2026-07-15).** After clustering, run one pass reading candidate BODIES for pairs that give **opposing guidance on the same situation**, not slug overlap, actual contradiction (e.g. "do only what's asked, don't bundle" vs "proactively audit the whole surface"; "assume-and-proceed" vs "never assume, enumerate first"). These usually are not hard contradictions but **boundary-not-yet-drawn** pairs: each is right in a different context. Do NOT resolve them yourself and do NOT silently pick one. Surface every apparent-conflict pair in PROPOSE (new section 3.2b) with: both candidates' one-line claims, the situation where they collide, and the **context axis** you think separates them, then let the user draw the boundary or supply more context. This is the conversation-stream analog of the Conflict gate (2.2 gate 3), which only scanned against existing rules; this scans candidates against each OTHER.
+
+**2.2 Apply the four gates, in order.** Failing a gate stops promotion; it is not retried at a higher tier. These gates apply to EVERY durable-write candidate, rules AND memory alike (a memory write is not exempt because it's cheap).
+
+1. **Source gate.** Candidate must carry attributable source facts (`project_id` / `captured_from_session` / `proposed_scope`). Unattributable goes to defer. Landing in the root inbox confers nothing.
+2. **Confidence gate.** Stamp `routing_confidence` here (it is /evolve's judgment, never capture's): **high** = clearly cross-project-general OR recurs in >= 2 agreeing projects/sessions OR the user meta-corrected it; **medium** = plausible but single-instance; **low/unclear** = scope unattributable. Only **high** may proceed toward a global write. If you can't state in one sentence why a candidate is high, it isn't: defer.
+   > **Recurrence gates corrections to rules; transferability gates frameworks to memory. Never gate a framework on recurrence.** The "single-instance, defer" bar is calibrated for behavioral corrections (>= 2 occurrences confirm systemic, not one-off). It does NOT apply to `delight-aha-framework` / most `delight-claude-move` candidates: a transferable lens is valuable on first articulation, it's an insight, not a flaky pattern. Treating an aha like a flaky test silently drops the highest-value signal this command exists for. Single-instance frameworks judged transferable + durable ARE `high` for the memory channel.
+3. **Conflict gate (a VETO, not a score).** Scan other projects' memories/candidates/instincts AND existing `rules/` for a contradicting entry. Asymmetric: ONE genuine counterexample refutes "globally true" regardless of how many agreements exist. A conflict vetoes global promotion, reclassify `context-dependent`, hand to Scope gate. **Conflict with an existing global rule must be surfaced loudly in PROPOSE**, never silently write a contradiction; resolution (scope down the old rule vs project-scope the new one) is the user's call.
+4. **Scope gate.** Cleared 1 to 3 + high + cross-project + no conflict goes to **global**. High but project-specific, or conflict-vetoed, goes to **project** (context-dependent, boundary noted), **written only after explicit user confirmation**. Medium/low/unclear or unresolved conflict goes to **defer** (stays in root inbox; only a high-confidence project-specific candidate moves to that project's queue).
+
+**2.3 Route each surviving cluster** with this tree:
+
+```
+Already covered by an existing rule / memory / CLAUDE.md entry?
+   -> route reject(covered). Do NOT silently drop it: this row feeds
+     enforcement debt. ATOMIC (added 2026-07-15): the moment you judge
+     a candidate "covered" you MUST, in the same step, stamp
+     mapped_rule_clause + would_have_prevented (Appendix A fields).
+     Classify-covered and stamp-debt are ONE action, never two: a
+     covered judgment without the debt fields is an incomplete
+     judgment, and is why debt sat at 0 for months (the stamp step
+     was silently skipped every run). Archive to .processed/ at EXECUTE.
+
+"If-this-then-that" persistent principle?          -> RULE   (cheapest)
+Nuanced preference / framework worth persisting?    -> MEMORY
+Multi-step workflow the user would type /<name> for,
+   AND >= 3 distinct steps, AND no existing skill?  -> SKILL
+Complex separable specialist role?                  -> AGENT
+Else                                                -> SKIP
 ```
 
-### MEMORY.md index update
+Tiebreaks: rule-vs-memory goes to rule (auto-applied, more discoverable); memory-vs-skill goes to memory (cheaper). **Skill anti-bloat gate** (mandatory before proposing any skill): `ls ~/.claude/skills/ | head -50`, `grep -l "<topic>" ~/.claude/skills/*/SKILL.md`; similar skill exists, propose modifying it; fails any SKILL condition, demote to rule/memory. Skill spec: name kebab-case + collision-checked, location `~/.claude/skills/<name>/SKILL.md` (global only), description <= 130 chars.
 
-After writing the memory file, append a line to the matching `MEMORY.md` in the same directory:
-```
-- [Title](feedback_<topic>.md), <one-line summary>
-```
+**2.4 Pick scope + target file** for each RULE / MEMORY write. Scope was decided by the gates in 2.2, this step only picks WHERE, it must not relax the gates. In particular: **scope uncertainty is not resolved by "prefer global"; unclear scope was already deferred at the gate.** ("Prefer global" applies only to genuinely cross-cutting content that already cleared the Confidence gate as high.)
 
-## Step 4, For each SKILL, pick scope and propose
+- **Global rule** goes to: list `~/.claude/rules/` subdirs (`common/`, `web/`, `python/`, `typescript/`, `golang/`, `swift/`, `php/`; skip `zh/`), pick the most domain-specific fit, read that subdir's file headings, pick the best-matching file. Then: new principle appends under the best heading; refines an existing entry, modify in place; duplicate, it should have routed `reject(covered)` in 2.3.
+- **Project rule** goes to: repo root via `git rev-parse --show-toplevel`; target `<root>/.claude/rules/*.md` if that convention exists, else `<root>/CLAUDE.md`, else propose creating `<root>/CLAUDE.md`. (Write only after the user confirms, Scope gate.)
+- **Memory**: reminder at the point of use, **a single-instance framework (`delight-aha-framework` / `feedback_framework_*`) does NOT need recurrence to route here**, transferability is its bar (gate 2's category-error note). Do not defer an aha "until it repeats." Then run the promotion audit:
+  `grep ~/.claude/projects/*/memory/feedback*<similar-topic>*` + same against the global dir `~/.claude/projects/<your-home-project>/memory/`.
 
-If you got past the anti-bloat gate:
+  | Audit finds | Routing |
+  |---|---|
+  | Topic nowhere yet | Route by the gates' scope decision (2.2). `proposed_scope` is a hint for where to LOOK, never sufficient by itself for a global write. |
+  | In 1 project memory + candidate from a different project | PROMOTE to global; propose merging/removing the old project entry in the plan table |
+  | In 2+ project memories | AUTO-PROMOTE to global; propose archiving project entries (move, don't delete) |
+  | Already in global memory | route `reject(covered)`, or propose modifying the global entry if the candidate adds real nuance |
+  | Already in same project's memory | UPDATE-IN-PLACE candidate |
 
-- Skill name: kebab-case, scoped narrowly enough not to collide with the existing 220+ skills
-- Skill location: `~/.claude/skills/<name>/SKILL.md` (global skills only, there's no "project skill" convention worth using)
-- Skill description: ≤130 chars, precise (every char is system-prompt cost forever)
-- Skill body: the multi-step procedure, drawn from the source instincts + pending-evolve candidates
+  Targets: global `~/.claude/projects/<your-home-project>/memory/feedback_<topic>.md`; project `~/.claude/projects/<project_id>/memory/feedback_<topic>.md`. Filename prefixes by candidate type: correction-D1 to `feedback_<topic>.md`; correction-D2 to `feedback_self_<topic>.md`; delight-D1 to `feedback_reinforce_<topic>.md`; delight-D2 to `feedback_framework_<topic>.md`. Body shape:
 
-If proposing modification of an existing skill: read its SKILL.md, decide where the new content fits.
+  ```markdown
+  ---
+  name: <kebab-slug>
+  description: <one-line, used for relevance matching>
+  metadata:
+    type: feedback
+    polarity: avoid | reinforce | framework
+  ---
 
-## Step 5, Present the unified plan (this is the only ask)
+  <Rule / framework statement (1-2 sentences)>
 
-Show the user **one table** covering every proposed write. For each row:
+  **Why:** <Specific reason or past incident.>
 
-| # | Cluster / Source | Decision | Target | Action | Source items |
+  **How to apply:** <When / where this fires.>
+  ```
+
+  After any memory write (at EXECUTE), append an index line to the `MEMORY.md` in the same directory.
+
+**2.5 Projected enforcement debt.** Take the historical per-clause counts from 1.5 and ADD this run's provisional `reject(covered)` classifications (with `would_have_prevented=yes`) from 2.3. Any clause whose projected count reaches **~3-4** is a **graduation candidate**: prose is demonstrably not holding; propose climbing it one rung up the enforcement ladder (Appendix B). Graduation proposals go into PROPOSE's Enforcement-changes section, never auto-rewrite a rule.
+
+---
+
+## Phase 3: PROPOSE (the only ask)
+
+**3.1 Plan table(s)**, one GLOBAL table, then one table per project with candidates (each its own go/skip, per the Modes note). One row per proposed artifact write. **Every row MUST carry a plain-language description and a confidence with its reason** (added 2026-07-15), without them the user is judging a category label, not an actual proposal, and cannot tell what they are approving or how strongly it is held:
+
+| # | What I'm proposing / what you're judging | Confidence (+ why) | Decision | Target | Source items |
 |---|---|---|---|---|---|
-| 1 | "always validate user input at boundaries" | RULE → global | `~/.claude/rules/common/coding-style.md` | append under "Input Validation" | instinct: validate-form-input, sanitize-api-payload + pending-evolve: correction-validate-everything-20260520 |
-| 2 | "audit fabricated specifics in public text" | MEMORY → global | `~/.claude/projects/<your-home-project>/memory/feedback_audit_fabricated_specifics.md` | create | pending-evolve: correction-audit-fabricated-specifics-20260522 |
-| 3 | "use grounded analogies when explaining systems" | MEMORY → global, framework | `~/.claude/projects/<your-home-project>/memory/feedback_framework_grounded_analogies.md` | create | pending-evolve: delight-aha-framework-grounded-analogies-20260522 |
-| 4 | "scaffold a FastAPI plan endpoint" | SKILL | new: `~/.claude/skills/fastapi-plan-endpoint/SKILL.md` | create | api-router-skeleton, request-validator |
-| 5 | (low confidence singleton) | SKIP |, |, | obscure-cli-flag-preference |
+| 1 | Make "always validate user input at boundaries" a standing rule, so any new endpoint/handler gets input validation by default. You're judging: is this a real cross-project default, or over-broad? | **high**, recurs in 3 projects + matches an instinct | RULE to global | `~/.claude/rules/common/coding-style.md` (append under "Input Validation") | instinct: validate-form-input + correction-validate-everything-20260520 |
+| 2 | Hold the framework "use grounded analogies when explaining systems" as a memory, so future explanations reach for a concrete parallel. You're judging: is this transferable, or a one-off nicety? | **medium**, single articulation, but frameworks route on transferability not recurrence | MEMORY to global, framework | `.../memory/feedback_framework_grounded_analogies.md` (create) | delight-aha-framework-grounded-analogies-20260522 |
 
-Below the table, show **one diff per row** (in a fold or sequentially): the actual content that will be appended/modified/created.
+**Column rules.** `What I'm proposing / what you're judging`: 1-2 plain sentences, what the durable artifact would DO in future sessions, plus the specific judgment call handed to the user. No jargon-only category labels. `Confidence (+ why)`: `high` / `medium` / `low`, each with a one-clause reason keyed to the Confidence gate (2.2 gate 2): `high` = cross-project-general OR recurs >= 2 OR the user meta-corrected; `medium` = plausible single-instance / framework-on-first-articulation; `low` = would normally defer, shown only if surfaced deliberately. The confidence is /evolve's semantic judgment against the gate, not a computed score, stating the reason is what keeps that judgment out of Claude's head and in front of the user. **Never silently pre-trim rows Claude feels lukewarm about**, show them with `low`/`medium` and let the user decide; hiding them is the exact opacity this column exists to kill.
 
-Then ask:
+Below each table, show one diff per row (the actual content to be appended/modified/created).
 
-> "Apply all? (yes / no / list rows to skip, e.g. '2,4')"
+**3.2 Enforcement changes** (separate section, these are NOT candidate-routing rows; approving a ladder climb is a different decision from approving a memory write):
 
-Wait for the response. Apply only approved rows. Don't ask anything else during the plan phase.
+| Rule clause | Debt (hist + this run) | Current rung | Proposed rung | Proposed change |
+|---|---|---|---|---|
+| `your-rule.md#specific-sub-clause` | 3 + 1 | 2 (decision-question) | 3 (checklist gate) | <one-line description> |
 
-## Step 5.5, Routing Review Report & safety thresholds (added 2026-05-25)
+Omit the section when there are no graduation candidates.
 
-Every `/evolve` run emits a **Routing Review Report** alongside the Step 5 plan, and checks four safety thresholds **before any write**. This is the lightweight per-run eval surface, distinct from Step 8's cross-run `.evolve-decisions.jsonl` aggregate. Lightweight by design: generated inline by `/evolve`, no new script, no capture-skill changes.
+**3.2b Apparent-conflict pairs** (from the 2.1b semantic scan; separate section, resolving a boundary is the user's call, not a routing row):
 
-### Per-candidate routing table
+| Candidate A (claim) | Candidate B (claim) | Where they collide | Context axis I think separates them | Your boundary |
+|---|---|---|---|---|
 
-One row per candidate processed this run:
+For each pair, propose the separating axis but leave the last column for the user. Omit the section when the scan found no apparent conflicts (but per safety-threshold 2, "found none across >= 2 projects" means re-scan reading bodies, not pattern-match).
 
-| candidate_id | source_project / source_session | proposed_scope | routing_confidence | conflict_scan_result | final_route | reason | user confirm required? |
+**3.3 Routing Review Report**, one row per candidate evaluated this run:
 
-- **conflict_scan_result**: `none` | `conflict-with-project:<name>` | `conflict-with-global-rule:<file>` | `boundary/context-dependent`
-- **final_route**: `global-rule` | `global-memory` | `project-rule` | `project-memory` | `context-dependent` | `defer` | `reject(covered)` | `keep-as-instinct`
-- **user confirm required?**: `yes` for any project rule/memory write OR any surfaced conflict; else `no`
+| candidate_id | source project/session | proposed_scope | routing_confidence | conflict_scan_result | final_route | reason | confirm? |
 
-### Audit sample (5 random candidates)
+`conflict_scan_result`: `none` | `conflict-with-project:<name>` | `conflict-with-global-rule:<file>` | `boundary/context-dependent`. `final_route`: `global-rule` | `global-memory` | `project-rule` | `project-memory` | `context-dependent` | `defer` | `reject(covered)` | `keep-as-instinct`. `confirm?` = `yes` for any project write or surfaced conflict.
 
-Randomly pick 5 of this run's candidates; for each show: original body text, full metadata (frontmatter), the routing decision, and the reason. The spot-check that routing matches content, lets the user catch a mis-route without reading every row.
+Plus an **audit sample**: 5 random candidates shown with full body + frontmatter + decision + reason, so the user can spot a mis-route without reading every row.
 
-### Metrics (computed for the run)
+Plus **metrics** over the eligible base (`eligible = evaluated - reject(covered)`; covered rows are archives/no-ops, not promotions, excluding them from BOTH numerator and denominator per the user's 2026-06-27 call):
+- `rule_promotion_rate` = global-rule writes / eligible, the 30% guard applies here
+- `memory_promotion_rate` = global-memory writes / eligible, informational, NOT gated at 30%: frameworks-to-memory is the designed path (see the category-error note in gate 2), so a framework-heavy batch legitimately shows high memory promotion
+- `defer_rate`, `conflict_surfaced_count`, `project_confirmation_count`, `user_correction_count`
 
-> **Exclude already-covered candidates from BOTH numerator and denominator.** A candidate already captured by an existing rule/skill/memory is an **archive / no-op**, not a promotion, counting it inflates the denominator and (if mis-bucketed) the numerator. The eligible base is **NEW candidates only**: `eligible = total - already_covered`. And **rule-promotion and memory-promotion are separate rates**: the 30% guard is about *rule* bloat (behavioral, near-always-loaded), whereas memory is a recall-gated cheap channel and frameworks-to-memory is the *designed* path, not a suspect promotion.
+**3.4 Safety thresholds** (checked BEFORE asking; a trip pauses or downgrades, never silently proceeds):
 
-- **rule_promotion_rate** = global-rule writes / eligible-NEW candidates  (the rate the 30% guard applies to)
-- **memory_promotion_rate** = global-memory writes / eligible-NEW candidates  (informational, NOT gated at 30%, especially for `delight-*` framework candidates whose intended home is memory)
-- **defer_rate** = deferred / eligible-NEW
-- **conflict_surfaced_count** = candidates whose conflict_scan_result ≠ `none`
-- **project_specific_confirmation_count** = project-route candidates that required user confirmation
-- **user_correction_count** = times the user overrode a proposed route in this run's review
+1. `rule_promotion_rate > 30%` goes to PAUSE and explain; the global-rule bar should rarely clear that many at once. List what's being promoted, ask the user to confirm or trim.
+2. Zero conflicts found across a batch spanning >= 2 projects, the scan was probably too shallow; re-run it reading actual entries, not pattern-matching.
+3. **Any project rule/memory write without explicit user confirmation, hard block.** No confirmation, stays `defer`. (Third statement of this invariant, deliberately: it is the highest-blast-radius mistake this command can make.)
+4. Confidence not explainable in one sentence, `defer`.
 
-### Safety thresholds (checked BEFORE writing, a trip pauses or downgrades, never silently proceeds)
+**3.5 Ask once, per table:** present the whole surface (global table + each project's table + enforcement-changes + apparent-conflict pairs), then ask for a **separate go/skip per table**, e.g. "GLOBAL: apply all / skip rows? · project=auto-apply: apply all / skip rows? · ...". One review surface, but each scope confirmed in its own context (never one blanket yes across global + N projects, safety-threshold 3). Also collect the user's boundary answers for any 3.2b conflict pairs. Wait; apply only approved rows; ask nothing else.
 
-1. **rule_promotion_rate > 30% → PAUSE and explain.** Do not write. Promoting more than ~30% of the **eligible-NEW** batch to global *rules* is suspect (the global rule bar, high-conf + cross-project + no-conflict, should rarely clear that many at once). Surface the rate, list what's being promoted, ask the user to confirm or trim first. **Note:** `memory_promotion_rate` is NOT subject to this 30% gate, a backlog of `delight-*` framework candidates is *supposed* to mostly become memory, and gating that on the rule-bloat threshold is the category error corrected in the Confidence gate above. Already-covered candidates are excluded from the base entirely (archive, not promotion).
-2. **conflict_scan_result all `none` BUT candidates span ≥2 projects → flag for re-check.** Zero conflicts across a multi-project batch usually means the scan was too shallow. Re-run it carefully (read the actual other-project entries, don't pattern-match) before trusting the all-clear.
-3. **project-specific candidate without user confirmation → MUST NOT write project rule/memory.** Hard block. No confirmation → stays `defer`, never auto-written.
-4. **confidence not explainable → default `defer`.** If you can't state in one sentence why a candidate is high/medium/low, it isn't high. Default to `defer`.
+---
 
-These thresholds are guards layered on the four gates (Source/Confidence/Conflict/Scope), not replacements.
+## Phase 4: EXECUTE
 
-## Step 6, Write approved rows, archive processed candidates, summarize
+**4.1 Write approved artifacts** (rules, memories + their MEMORY.md index lines, skills, enforcement-change edits). Show each resolved path.
 
-After writing:
+**4.2 Disposition every candidate**, consistent semantics (this also fixes an old contradiction where user-skipped rows were logged `rejected` yet left queued for reprocessing):
+- Fed an approved write, move to `.processed/`, log `accepted`.
+- `reject(covered)` or SKIP-judged, move to `.processed/`, log `rejected`.
+- **The user excluded the row in review**, stays in queue, log `deferred` with reason `"user excluded in review"` (defer = will be seen again; if the user wants it gone, delete on their confirmation).
+- Deferred by gates, stays in queue, log `deferred`.
+- Instinct YAMLs are never auto-deleted; list their paths so the user can `rm`.
 
-- Print a short summary: "Wrote N rules, M memories, K skills, A agents, skipped S."
-- For each write, show the resolved file path.
-- **For each pending-evolve candidate that fed an approved write**: move it to `~/.claude/pending-evolve/.processed/` (preserves audit trail; can be re-examined if needed).
-- **For each pending-evolve candidate the user skipped**: leave it in `~/.claude/pending-evolve/` for next run, OR (if low-value) delete with user confirmation.
-- List source instinct YAML paths so the user can `rm` them if they want (don't auto-delete instincts, `pending-evolve/` candidates archive automatically, instincts don't).
+**4.3 Log EVERY candidate evaluated this run**, one JSONL row each, appended to `~/.claude/pending-evolve/.evolve-decisions.jsonl`, schema in Appendix A (locked; the review script depends on it). Not optional: this log is the only Layer-2 eval signal for the upstream capture skills, and the only place enforcement debt accumulates. On `reject(covered)` rows, the `mapped_rule_clause` + `would_have_prevented` fields are what make 1.5/2.5 possible next run, never omit them.
 
-## Step 7, Log every decision to `.evolve-decisions.jsonl` (Layer 2 feedback loop)
-
-After Step 6 (writes + archive complete), append ONE JSON line per processed candidate to `~/.claude/pending-evolve/.evolve-decisions.jsonl`. **Every candidate /evolve looked at this run gets logged**, regardless of outcome, accepted, rejected, or deferred.
-
-This is not optional. The log is the only Layer 2 eval signal for the capture skills upstream; skipping rows silently degrades the feedback loop. See `~/.claude/scripts/review-evolve-signals.sh` for the consumer.
-
-### Row schema (locked)
-
-```jsonl
-{"candidate_file":"correction-foo-20260522-173500.md","skill_source":"correction-capture","decision":"accepted","decision_reason":"cross-source cluster","tags":["type=correction","direction=D1","topic=foo","scope=global"],"confidence":0.9,"evolve_session_at":"2026-05-23T15:30:00Z"}
-```
-
-Fields:
-
-- **`candidate_file`**: basename of the source file. One row per file:
-  - For `pending-evolve/` candidates: the `.md` filename
-  - For instinct YAMLs: the `.yaml` filename
-  - For cross-source clusters: write **one row per involved file** (same `decision` / `decision_reason` / `evolve_session_at`, but each with its own `skill_source`). Link them via a `cluster_id=<run-uuid>` tag.
-- **`skill_source`**: where the candidate originated
-  - `correction-capture` (filename prefix `correction-`)
-  - `delight-capture` (filename prefix `delight-`)
-  - `continuous-learning-v2` (instinct YAML)
-- **`decision`**: exactly one of `accepted` | `rejected` | `deferred`
-  - `accepted` → candidate fed a write that was persisted in Step 6
-  - `rejected` → /evolve chose SKIP in Step 1, or the user excluded the row in Step 5
-  - `deferred` → candidate left in queue for next run (singleton awaiting cluster, low confidence, waiting for evidence)
-- **`decision_reason`**: terse, structured phrase. **Prefer canonical phrases over freeform prose**, aggregation depends on string equality. Canonical set (extend conservatively):
-  - Reject: `"too narrow"`, `"one-off implementation choice"`, `"performative self-criticism"`, `"duplicate of existing memory"`, `"insufficient evidence"`, `"out of scope"`, `"covered by existing rule"`, `"user excluded in review"`
-  - Defer: `"singleton awaiting cluster"`, `"low confidence, watching"`, `"needs human judgment"`, `"evidence in 1 project only"`
-  - Accept: `"cross-source cluster"`, `"high-confidence instinct"`, `"explicit meta-correction"`, `"reinforced across sessions"`, `"auto-promote to global"`
-- **`tags`**: array of `key=value` strings drawn from candidate frontmatter. Minimum: `type=`, `direction=`, `topic=`, `scope=`. For cross-source clusters add `cluster_id=<uuid>` linking rows.
-- **`confidence`**: /evolve's confidence in the decision (0.0 to 1.0). Rough calibration:
-  - 0.9+ → cross-source cluster, explicit the user meta-correction, or 3+ project occurrences
-  - 0.7 to 0.85 → clear single-stream signal, well-articulated rule
-  - <0.7 → borderline; usually defer rather than accept/reject
-- **`evolve_session_at`**: ISO 8601 **UTC Z-form** timestamp (e.g., `2026-05-23T15:30:00Z`). Generated once at start of /evolve run, reused for all rows from that run.
-
-### Timestamp format (load-bearing)
-
-All `evolve_session_at` values **must** be UTC Z-form, never local-offset (`-07:00`). The review script uses `jq fromdate` for time-window filtering, which only parses Z form. Mixing formats breaks aggregation silently. Generate via:
-
-```bash
-EVOLVE_RUN_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-```
-
-### Append protocol
-
-```bash
-echo '{"candidate_file":"...","skill_source":"...","decision":"...","decision_reason":"...","tags":[...],"confidence":...,"evolve_session_at":"...Z"}' \
-  >> ~/.claude/pending-evolve/.evolve-decisions.jsonl
-```
-
-One row per `echo`, append-only, jsonl format. The file is never rewritten, only appended. Partial logs from crashed /evolve runs are fine; unlogged candidates stay in the queue and get re-processed next run.
-
-### Why log everything (not just rejections)
-
-Reject-only logging misses two important signal classes:
-- **Accept rate by skill**: a skill with consistently >80% accept rate is well-calibrated; a skill at <30% needs its SKILL.md acid test tightened. You can't compute this from rejects alone.
-- **Defer patterns**: candidates repeatedly deferred but never crossing into accept/reject indicate either a too-strict threshold or a topic that is genuinely one-off and should be rejected outright.
-
-Together, accept + reject + defer rates per `skill_source` constitute the labeled Layer 2 corpus for evaluating upstream capture skills. The judgment decisions /evolve already has to make become the eval pipeline at zero marginal cost.
-
-### Backward compatibility
-
-The schema is forward-extensible, new fields can be added without breaking the review script (jq reads only known fields). When adding a new field, document it here AND update `review-evolve-signals.sh` if the aggregation should use it.
-
-## Step 8, Run review-evolve-signals.sh and surface any alerts
-
-After Step 7 has appended all decision rows to `.evolve-decisions.jsonl`, run the Layer 2 review summarizer with `--mark-reviewed`:
+**4.4 Run the review summarizer:**
 
 ```bash
 ~/.claude/scripts/review-evolve-signals.sh --mark-reviewed
 ```
 
-This:
-1. Reads the cumulative `.evolve-decisions.jsonl`
-2. Filters to rows since the last `.last-reviewed.json` cutoff
-3. Aggregates accept/reject/defer rates per `skill_source`
-4. Lists top reject reasons + top defer reasons
-5. Surfaces threshold alerts (any `decision_reason` appearing ≥ `EVOLVE_ALERT_THRESHOLD` times, default 10)
-6. Updates `.last-reviewed.json` to "now" so next /evolve only sees rows from this run forward
+It aggregates accept/reject/defer rates per `skill_source` since the last cutoff and alerts when any **reject** reason appears >= `EVOLVE_ALERT_THRESHOLD` (default 10) times in the window (rejects only, the script does not threshold accept/defer reasons). Fold the output into the final summary: healthy, one line; alert, name (a) which capture skill is producing noise, (b) the recurring reject reason, (c) which acid test to tighten. Note: a wave of `"covered by existing rule"` rejects is NOT capture noise, it is enforcement debt; read it via Appendix B, don't tighten capture for it.
 
-### Folding the summary into /evolve's final report
+**4.5 Final summary** with complete bucket accounting (Core principle 4): accepted / rejected / deferred / kept-as-instinct counts that sum to evaluated, defer residual named, queue count after the run, plus the review-script line.
 
-Take the script's output and **fold it into your final summary to the user**. If there are no threshold alerts and the rates look healthy, a one-line note is enough:
+---
 
-> Review window: 14 decisions (10 accept / 3 reject / 1 defer). No alerts.
+## Appendix A: `.evolve-decisions.jsonl` row schema (LOCKED, contract with review-evolve-signals.sh)
 
-If there ARE threshold alerts, surface them prominently:
+```jsonl
+{"candidate_file":"correction-foo-20260522-173500.md","skill_source":"correction-capture","decision":"accepted","decision_reason":"cross-source cluster","tags":["type=correction","direction=D1","topic=foo","scope=global"],"confidence":0.9,"evolve_session_at":"2026-05-23T15:30:00Z"}
+```
 
-> **ALERT**: `correction-capture` emitted 12 candidates rejected as "too narrow" in the last window. This suggests the D1 acid test in `correction-capture/SKILL.md` is too lenient. Consider tightening the "systemic preference (not one-off fact)" filter.
+- **`candidate_file`**: basename. One row per file (queue `.md` or instinct `.yaml`). Cross-source clusters: one row per involved file, same decision/reason/timestamp, linked by a `cluster_id=<run-uuid>` tag.
+- **`skill_source`**: `correction-capture` (prefix `correction-`) | `delight-capture` (prefix `delight-`) | `continuous-learning-v2` (instinct YAML).
+- **`decision`**: `accepted` (fed a persisted write) | `rejected` (covered / SKIP-judged) | `deferred` (stays in queue, including user-excluded rows, see 4.2) | `annotation` (a maintainer note attached to the log, not a candidate outcome, e.g. classifying a prior alert as benign/convergence-reject; excluded from accept/reject/defer rate math).
+- **`decision_reason`**: canonical phrases only (aggregation is string-equality; extend conservatively).
+  - Reject: `"too narrow"`, `"one-off implementation choice"`, `"performative self-criticism"`, `"duplicate of existing memory"`, `"insufficient evidence"`, `"out of scope"`, `"covered by existing rule"`
+  - Defer: `"singleton awaiting cluster"`, `"low confidence, watching"`, `"needs human judgment"`, `"evidence in 1 project only"`, `"user excluded in review"` *(recategorized from Reject on 2026-07-07: excluded rows stay in queue, which is defer semantics)*
+  - Accept: `"cross-source cluster"`, `"high-confidence instinct"`, `"explicit meta-correction"`, `"reinforced across sessions"`, `"auto-promote to global"`, `"framework transferable on first articulation"`, `"clear single-stream signal, well-articulated rule"`
+- **`mapped_rule_clause`** (enforcement-debt field, ONLY on `"covered by existing rule"` rows): the specific clause duplicated, as `<rule-file-basename>#<short-clause-slug>` (e.g. `your-rule.md#specific-sub-clause`), the sub-behavior, not the whole file. Omit elsewhere.
+- **`would_have_prevented`** (ONLY on covered rows): `yes` | `no` | `unclear`, would that rule, *if actually followed*, have prevented this failure? A counterfactual, not topical relatedness. Only `yes` counts toward debt; `no`/`unclear` guard against graduating the wrong rule on false attribution. Omit elsewhere.
+- **`tags`**: `key=value` strings from frontmatter; best-effort `type=`, `direction=`, `topic=`, `scope=` (legacy rows may omit them, the generator now emits them so new rows comply; do not retro-fill old rows); clusters add `cluster_id=`.
+- **`confidence`**: 0.0 to 1.0. 0.9+ = cross-source cluster / user meta-correction / 3+ projects; 0.7 to 0.85 = clear single-stream; <0.7 = usually defer instead.
+- **`evolve_session_at`**: ISO 8601 **UTC Z-form only** (`date -u +"%Y-%m-%dT%H:%M:%SZ"`, generated once per run). The review script's `jq fromdate` parses only Z-form; a local-offset timestamp breaks aggregation silently.
 
-The alert text should name (a) which skill is producing noise, (b) which reject_reason keeps recurring, (c) which acid test or filter to look at.
+Append protocol: one `echo '<row>' >> ~/.claude/pending-evolve/.evolve-decisions.jsonl` per row; append-only, never rewritten; partial logs from crashed runs are fine (unlogged candidates stay queued and re-process next run). Why log everything, not just rejects: accept-rate per skill shows which capture skill is well-calibrated (<30% accept, tighten its acid test); repeated defer-without-resolution shows a threshold problem. The schema is forward-extensible (jq reads known fields); document any new field here AND update the script if aggregation should use it.
 
-### Why review at /evolve time (not scheduled separately)
+## Appendix B: Enforcement debt: triage first, then fork by mechanizability (rewritten 2026-07-15)
 
-Earlier proposals considered a weekly launchd job to run review. Rejected because:
-- Review only has new signal when /evolve has logged new decisions
-- /evolve doesn't run on a clock, so weekly runs would mostly produce stale repeats
-- Folding into /evolve = single user-touched surface, no background timers, no hidden state
+A `"covered by existing rule"` candidate is NOT noise, it is a **failed activation**: a rule existed and was violated anyway. Recurrence-despite-a-rule is the highest-value signal that a rule is prose-in-name-only. Keep capturing them, archive them as covered, but mine them first (1.5 / 2.5).
 
-The same logic applied to verify-pending-evolve.sh (Step 0.5): both scripts are user-pull, not clock-push. Their natural cadence is "whenever /evolve runs."
+Debt per clause = count of covered rows with `would_have_prevented=yes`, grouped by `mapped_rule_clause`. Projected debt (historical + current run) reaching **~3-4** makes the clause a graduation candidate (surface in 3.2). Never auto-rewrite a rule; propose, let the user decide.
 
-## Cross-source clustering example (the architectural payoff in practice)
+**The 2026-07-09 run falsified the old single 7-rung ladder** (one direction, debt-high, climb-more-mechanical). It was wrong twice: (a) it assumed every rule can climb toward a hook, but pure-judgment rules cannot be made deterministic; (b) it assumed recurrence always means under-enforced, when it can mean the rule is too broad. The model below replaces it.
 
-Scenario: user works on CSS for a few weeks. Two streams accumulate:
+### Step 1: TRIAGE the failure before doing anything (debt is 3-dimensional, not a scalar)
 
-**Tool-call stream (continuous-learning-v2 observer)**: noticed pattern "user runs Grep then Edit on CSS files containing !important", generated instinct `prefer-setProperty-over-inline-important` at confidence 0.6 (borderline).
+The same symptom ("rule violated") has three distinct causes needing opposite fixes. The capture skills stamp triage signal at capture time (was the rule in context? acknowledged-then-violated? a legitimately-different case?); use it, or infer from the candidate body:
 
-**Conversation stream (correction-capture)**: in session 2026-05-18 user said "don't set !important via inline JS, use setProperty", dumped to `~/.claude/pending-evolve/correction-no-inline-important-20260518.md` (single moment, low standalone weight).
+| Cause | Signature | Fix direction |
+|---|---|---|
+| **Plumbing**, the rule was never IN context that turn | path-scoped rule not reloaded after `/compact`; nested rule never injected; context evicted it | Fix LOADING, not the rule. Hardening a rule that wasn't delivered is pointless. (Verify with an `InstructionsLoaded`-style audit of what was actually loaded at violation time.) |
+| **Steerability**, rule WAS in context, ignored anyway | loaded + acknowledged + violated | Move to a real enforcement point (Step 2). This is the only cause the old ladder addressed. |
+| **Over-scoping**, rule fired on a legitimately-different case | recurrence with NO real harm; the "violation" was actually correct behavior | **De-escalate**: narrow the rule's trigger/scope, or demote its severity. A bigger hammer here is the wrong fix. |
 
-Each alone would likely SKIP at /evolve time. Together at /evolve, they cluster into:
-- RULE → global → `~/.claude/rules/web/css-conventions.md` → append under "JS-set styles": "Never set !important via inline JS; use setProperty on the relevant rule."
-- Both sources are cited in the row's "Source items" column for traceability.
+Only **steerability** debt escalates. Plumbing debt routes to a loading fix. Over-scoping debt routes to a de-escalation/narrowing proposal. Misclassifying the last two as steerability is how a system over-hardens rules that were never the problem.
 
-This is the payoff of treating both signal streams as inputs to one judgment surface. Capture stays cheap on both sides; judgment compounds.
+### Step 2: For steerability debt, FORK by mechanizability (not one ladder)
 
-## Why this differs from upstream ECC `/evolve`
+Different rule shapes get different enforcement homes. Pick by "can this be checked, and how":
 
-Default ECC `/evolve --generate`:
-- Writes `~/.claude/homunculus/.../evolved/` files automatically per cluster, no review
-- Doesn't audit existing rules or skills before creating new ones
-- Doesn't distinguish persistent-principle (rule) from invoked-tool (skill)
-- Has no concept of "memory" as an output channel
-- Reads only instincts (no conversation-derived signal)
-- Tends toward skill-shaped output, growing per-conversation token cost
+| Rule shape | Enforcement home | Why |
+|---|---|---|
+| **Deterministically checkable** (banned phrase, "run `git rev-list` before saying 'pushed'", file-exists) | **Deterministic hook / linter / permission-deny** (`PreToolUse`, exit 2) | A regex/command settles it; 100% reliable, no model needed. Anthropic's own line: prompts are context, hooks are enforcement. |
+| **Judgment, not mechanizable** ("is this claim backed by a check that could have failed", "does the copy lead with the reader's pain") | **`prompt`-type or `agent`-type hook**, put the judgment rule text in the hook's `prompt`; a cheap model judges it at each matching tool event | This is the key 2026-07-15 addition. The old plan compressed judgment to a prose line and put it BACK in CLAUDE.md, the same "context not enforcement" bucket that caused the recurrence. A prompt-hook gives the judgment call a real enforcement point without forcing false decomposition. (Official: `{"type":"prompt","prompt":"...","model":"...","timeout":30}`. `type:"agent"` when the check must inspect files first.) |
+| **Bounded to a file type / domain** (only matters when touching CSS, or migrations, or a repo) | **Path-scoped rule** (`paths:` frontmatter) | Loads only when relevant, frees always-on attention budget (instruction count trades off linearly against compliance). A third option between always-on prose and a hook. |
+| **Genuinely cross-cutting judgment, could fire on any task** (verify-before-claiming, communication register) | **One sharp always-loaded line** + optionally a prompt-hook if debt persists | These have no natural glob and can't be deterministic. Keep them short (every extra always-on clause dilutes the rest) and, if they keep failing, back them with a prompt-hook rather than a longer prose rule. |
 
-This variant:
-- Reads two sources (instincts + `pending-evolve/`)
-- Adds rule and memory as output channels
-- Audits existing rules / skills / memory files before creating new ones
-- Uses cost-aware tiebreak (cheaper artifacts preferred)
-- Single unified approval gate
+**Decompose bundles, don't climb them.** A rule that is really N sub-behaviors (e.g. a verify rule's many accreted trigger-shapes) is not one rung to climb, split it: hook the mechanizable sub-clauses individually, path-scope the domain-bounded ones, leave only the irreducible-judgment core as prose (backed by a prompt-hook if needed). "Add trigger-shape #N+1" is the anti-pattern this replaces.
 
-## Note: this replaces ECC's `/evolve`
+### Verify the intervention + de-escalation is real
 
-This command installs to `~/.claude/commands/evolve.md` and is a rewrite of ECC's
-`/evolve`. If you also have the ECC marketplace installed, its updates may
-overwrite this file (the marketplace copy lives under
-`~/.claude/plugins/marketplaces/ecc/commands/evolve.md`). If that happens,
-re-run this project's `install.sh` to restore the cost-aware, four-gate version.
-The `pending-evolve/` + memory channel behavior is specific to this project and
-is not in upstream ECC.
+"Did it work" = the same `mapped_rule_clause` stops appearing with `would_have_prevented=yes` in later windows, a query over the same log, not a new system. This works for de-escalation too: a narrowed over-scoped rule should stop generating covered-rows-with-no-harm.
+
+**Cross-check the classification (research-confirmed):** Anthropic's own docs state CLAUDE.md is "context, not a hard enforcement layer" and closed "rules not enforced" issues as *not planned*, so a rule violated >= 2 times is expected behavior for prose, and the triage/fork above (not a third prose rewrite) is the correct next move. Evidence-cited rules (each rule carrying its ground-truth incident) resist silent deprioritization; keep that.
+
+**Explicitly deferred machinery (build only when its trigger fires):** weighted/decayed scoring (trigger: debt data outgrows eyeballing a count); synthetic probes + adversarial regression suite (trigger: something reaches a deterministic hook and must be guarded from regression); a meta-critic on /evolve's own classifications (trigger: observed mis-routing); an infra-level policy proxy that enforces across all projects/subagents regardless of whether a rule was loaded (trigger: you want cross-project enforcement, not per-repo). At solo scale most are net-negative, small-N scoring is statistical theater, upkeep lands on one person. This is the same build-vs-preserve restraint the system applies to itself.
+
+## Appendix C: Cross-source clustering example
+
+Tool-call stream: instinct `prefer-setProperty-over-inline-important` at 0.6 (borderline). Conversation stream: `correction-no-inline-important-20260518.md` (single moment, low standalone weight). Each alone would SKIP. Together they cluster to RULE, global, `~/.claude/rules/web/css-conventions.md`, both sources cited in the row's Source-items column. Capture stays cheap on both sides; judgment compounds at the one surface that sees both.
+
+## Appendix D: Provenance, design history, local-override note
+
+**vs upstream ECC `/evolve --generate`:** ECC auto-writes evolved skill files per cluster with no review, reads instincts only, has no rule/memory channels, doesn't audit existing artifacts, and trends skill-shaped (growing per-conversation token cost). This variant reads two sources, adds rule+memory channels, audits before creating, prefers cheaper artifacts, and gates everything behind one approval.
+
+**Design history:** routing modes + four gates + per-project queues added 2026-05-25 (before them, a mixed queue was blind-routed globally; the gates make default-defer the safe baseline). Routing Review Report + safety thresholds added 2026-05-25. Covered-excluded metrics base + rule-vs-memory rate split: 2026-06-27. Enforcement-debt fields + ladder: 2026-07-05 (the user's reframe: if a candidate is already covered yet the same failure recurs, that recurrence is itself a signal). Restructured into phases + contradiction fixes (inbox wording, uncertain-to-defer, covered-logged-not-ignored, excluded-to-deferred): 2026-07-07, after adversarial review with a second model.
+
+**Local override:** this file lives at `~/.claude/commands/evolve.md`, NOT the marketplace copy. If an ECC update ever overwrites it, restore from backup, the pending-evolve / memory / enforcement-debt layers are local, not upstream.

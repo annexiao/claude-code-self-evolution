@@ -230,7 +230,7 @@ Edit `config.json` to control the background observer:
 {
   "version": "2.1",
   "observer": {
-    "enabled": false,
+    "enabled": true,
     "run_interval_minutes": 5,
     "min_observations_to_analyze": 20
   }
@@ -239,7 +239,7 @@ Edit `config.json` to control the background observer:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `observer.enabled` | `false` | Enable the background observer agent |
+| `observer.enabled` | `true` | Enable the background observer agent |
 | `observer.run_interval_minutes` | `5` | How often the observer analyzes observations |
 | `observer.min_observations_to_analyze` | `20` | Minimum observations before analysis runs |
 
