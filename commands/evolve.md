@@ -45,7 +45,7 @@ python3 ~/.claude/skills/continuous-learning-v2/scripts/instinct-cli.py evolve
 
 **1.3 Read Source B, the candidate queue** for this mode's scope (skip `.processed/`). Read every file's body, not just frontmatter. Frontmatter fields: `type` (`correction` | `delight-claude-move` | `delight-aha-framework`), `topic`, `captured_at`, `captured_from_session`, `source`, `project_id`, `proposed_scope` (a capture-time hint, NEVER final), `suggested_target` (hint).
 
-> **Gotcha (added 2026-07-16, after a real mis-read):** `project_id` holds a **hash** (e.g. `56c3ccd64e46`), NOT the project name; the readable name is in the separate `project_name` field (e.g. `auto-apply`). To filter/count candidates by project, grep `project_name`, or map the hash first: `grep 'project_id: <name>'` returns 0 and falsely reads as "no project candidates." Also: candidates carry their scope in **frontmatter**, not in a physical per-project `pending-evolve/` subdir (those are created only on first move), so "no project subdir exists" does not mean "no project candidates." Get the real distribution with `grep -h '^project_name:' *.md | sort | uniq -c`.
+> **Gotcha (added 2026-07-16, after a real mis-read):** `project_id` holds a **hash** (e.g. `a1b2c3d4e5f6`), NOT the project name; the readable name is in the separate `project_name` field (e.g. `my-app`). To filter/count candidates by project, grep `project_name`, or map the hash first: `grep 'project_id: <name>'` returns 0 and falsely reads as "no project candidates." Also: candidates carry their scope in **frontmatter**, not in a physical per-project `pending-evolve/` subdir (those are created only on first move), so "no project subdir exists" does not mean "no project candidates." Get the real distribution with `grep -h '^project_name:' *.md | sort | uniq -c`.
 
 **1.4 Queue health snapshot** (informational, never blocks):
 
@@ -150,6 +150,18 @@ Tiebreaks: rule-vs-memory goes to rule (auto-applied, more discoverable); memory
 
 Below each table, show one diff per row (the actual content to be appended/modified/created).
 
+**Size rule (added 2026-07-20).** Cap any single review surface at roughly **7 rows**. Past that,
+either batch it into several asks, or render the whole surface as a page instead (see
+[docs/REVIEW-BOARD.md](../docs/REVIEW-BOARD.md)). The failure this prevents is not "the table is
+long", it is what a long table pushes you into: compressing each row until the user is approving a
+category label rather than a proposal. If the rows do not fit, there are too many rows on screen,
+not too many words in a row.
+
+A large run (dozens of proposed writes) should default to the board. It is one self-contained HTML
+page with a collapsed summary row per write and the full evidence one click away, which is the only
+arrangement where detail and scannability are not zero-sum. The approval still comes back as one
+chat message.
+
 **3.2 Enforcement changes** (separate section, these are NOT candidate-routing rows; approving a ladder climb is a different decision from approving a memory write):
 
 | Rule clause | Debt (hist + this run) | Current rung | Proposed rung | Proposed change |
@@ -185,7 +197,7 @@ Plus **metrics** over the eligible base (`eligible = evaluated - reject(covered)
 3. **Any project rule/memory write without explicit user confirmation, hard block.** No confirmation, stays `defer`. (Third statement of this invariant, deliberately: it is the highest-blast-radius mistake this command can make.)
 4. Confidence not explainable in one sentence, `defer`.
 
-**3.5 Ask once, per table:** present the whole surface (global table + each project's table + enforcement-changes + apparent-conflict pairs), then ask for a **separate go/skip per table**, e.g. "GLOBAL: apply all / skip rows? · project=auto-apply: apply all / skip rows? · ...". One review surface, but each scope confirmed in its own context (never one blanket yes across global + N projects, safety-threshold 3). Also collect the user's boundary answers for any 3.2b conflict pairs. Wait; apply only approved rows; ask nothing else.
+**3.5 Ask once, per table:** present the whole surface (global table + each project's table + enforcement-changes + apparent-conflict pairs), then ask for a **separate go/skip per table**, e.g. "GLOBAL: apply all / skip rows? · project=my-app: apply all / skip rows? · ...". One review surface, but each scope confirmed in its own context (never one blanket yes across global + N projects, safety-threshold 3). Also collect the user's boundary answers for any 3.2b conflict pairs. Wait; apply only approved rows; ask nothing else.
 
 ---
 

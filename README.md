@@ -18,6 +18,34 @@ No fine-tuning. No cloud. No weights touched. Just your real corrections and end
 
 ---
 
+## What's new
+
+> <details>
+> <summary><sub><b>2026-07-20:</b> Sharper oversight. A large approval has to be genuinely readable; verification has to ask not just whether a check ran but whether it could have failed; and a confirmation gate should scale to the risk instead of firing on everything alike.</sub></summary>
+>
+> - **A large run now renders its approval surface as a page, not a chat table.** Past a few dozen proposed writes a table has no good setting: written out fully it is unreadable, compressed it leaves you approving a category label instead of a proposal. A page dissolves that, because a one-line summary and the full evidence behind it can both exist with you choosing which to look at. `/evolve` also gains a plain size rule for the chat fallback: cap a review surface at about seven rows, batch anything longer. See [docs/REVIEW-BOARD.md](docs/REVIEW-BOARD.md).
+> - **The verify-before-claiming rule was split, because its enforcement hook was catching the wrong half.** The hook fires when the agent claims something is done or live with nothing to back it, and it works. But the failures that kept recurring were a different shape: a check *was* run and could not have come out the other way. That principle was already in the rule, as its last line, under two dozen accumulated examples. The rule now leads with the two shapes and a four-question test on your own check (layer, scope, timing, arbiter), with the accumulated examples demoted to evidence. The hook was extended at both layers, since messages of the second shape never reached its judge at all.
+> - **A rule was narrowed rather than hardened, for the first time.** The triage model has always had three outcomes, and only two had ever fired. A confirmation gate meant for outward-facing actions was firing on the owner's own one-command-rollback deploys, adding a round trip and removing no risk. It is now calibrated by blast radius and reversibility, which is what an over-scoping diagnosis is supposed to produce.
+>
+> </details>
+>
+> <details>
+> <summary><sub><b>2026-07-15:</b> The enforcement model learned to diagnose why a rule failed before deciding how to fix it, and the plan table learned to say what it is actually proposing.</sub></summary>
+>
+> - **The enforcement model was rebuilt: diagnose the failure, then match the fix to the rule's shape.** *Why* did a rule fail: never loaded (**plumbing**, fix delivery), loaded-but-ignored (**steerability**), or fired where it should not (over-scoping, narrow it)? Only a steerability failure gets a stronger home, and it is routed by shape rather than just "made harder": a mechanical check becomes a **deterministic hook**, a judgment call becomes a **prompt-hook** (a cheap model judges it live, not another line of prose), and a file-bounded rule becomes a **path-scoped rule**.
+> - **The plan table shows what each proposal does and how strongly it is held.** A plain-language "what you're judging" column plus a confidence with its reason, so you approve an actual proposal, not a category label. Rows the agent feels lukewarm about are shown as low/medium for you to decide, never silently dropped.
+> - **One `/evolve` now sweeps everything.** A single run covers your global queue and every project queue, no more `cd`-ing into each repo. You get one global plan table plus one table per project, each confirmed separately (never one blanket "yes" across scopes).
+>
+> </details>
+>
+> <details>
+> <summary><sub><b>2026-06-27:</b> A framework no longer has to repeat itself to count.</sub></summary>
+>
+> - **Recurrence gating now applies to corrections only.** A behavioral correction still needs to happen twice before it becomes a rule, because once may be a slip. A transferable framework does not: it is a lens, not a flaky pattern, and it is worth keeping the first time it is articulated. Waiting for a second occurrence that may never come was silently dropping the highest-value signal the system exists to catch.
+> - **Already-covered candidates no longer distort the promotion rate.** They are archives, not promotions, so they leave the base entirely. Rule promotion and memory promotion are also now measured separately, since a batch of frameworks is *supposed* to become memory.
+>
+> </details>
+
 ## The problem
 
 Every coding session you teach your agent something: "don't put `!important` inline", "lead with the conclusion", "this codebase uses pnpm not npm". Then the session ends and all of it evaporates. Next week you type the same correction again.
@@ -64,14 +92,6 @@ Most self-evolving agents either retrain weights or auto-rewrite one prompt. Thi
 - **The eval corpus is free.** Every accept/reject/defer you make at `/evolve` is logged. That log *is* the labeled dataset for grading whether the capture skills are too noisy. No separate eval harness.
 
 See [docs/COMPARISON-OTHER-SYSTEMS.md](docs/COMPARISON-OTHER-SYSTEMS.md) for an honest table against Hermes, Sepo, the OpenAI cookbook, the self-evolving-agents survey, and EvoMap (including where the ideas overlap). In the survey's taxonomy (arXiv 2507.21046), this project sits at **Memory/Tools, evolved inter-test-time, from textual feedback, in a single-agent coding setting**: it deliberately avoids the heaviest routes (evolving weights or architecture) because only reversible behavioral instructions are worth letting an agent rewrite about itself.
-
-## What's new
-
-**2026-07-15: enhancements to the enforcement model and `/evolve`.**
-
-- **The enforcement model was rebuilt: diagnose the failure, then match the fix to the rule's shape.** *Why* did a rule fail: never loaded (**plumbing**, fix delivery), loaded-but-ignored (**steerability**), or fired where it should not (over-scoping, narrow it)? Only a steerability failure gets a stronger home, and it is routed by shape rather than just "made harder": a mechanical check becomes a **deterministic hook**, a judgment call becomes a **prompt-hook** (a cheap model judges it live, not another line of prose), and a file-bounded rule becomes a **path-scoped rule**.
-- **The plan table shows what each proposal does and how strongly it is held.** A plain-language "what you're judging" column plus a confidence with its reason, so you approve an actual proposal, not a category label. Rows the agent feels lukewarm about are shown as low/medium for you to decide, never silently dropped.
-- **One `/evolve` now sweeps everything.** A single run covers your global queue and every project queue, no more `cd`-ing into each repo. You get one global plan table plus one table per project, each confirmed separately (never one blanket "yes" across scopes).
 
 ## Quick start
 
