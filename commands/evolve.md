@@ -139,6 +139,8 @@ Tiebreaks: rule-vs-memory goes to rule (auto-applied, more discoverable); memory
 
 ## Phase 3: PROPOSE (the only ask)
 
+**3.0 Pick the review surface (added 2026-07-25).** If the run proposes more than ~7 rows across all tables, render the whole PROPOSE surface as a review board: a self-contained HTML page (collapsed/expandable rows, a sticky decision nav, a tally whose buckets carry their dispositions, a ledger of past runs read from the decision log), following the design in `docs/REVIEW-BOARD.md`. Assert the row counts before publishing, and add no how-to prose. The approval still comes back in ONE message; the page is for reading, never for collecting input. The chat-table fallback is capped at ~7 rows: batch anything longer into several readable approval rounds rather than compressing rows below the point where a proposal can be judged.
+
 **3.1 Plan table(s)**, one GLOBAL table, then one table per project with candidates (each its own go/skip, per the Modes note). One row per proposed artifact write. **Every row MUST carry a plain-language description and a confidence with its reason** (added 2026-07-15), without them the user is judging a category label, not an actual proposal, and cannot tell what they are approving or how strongly it is held:
 
 | # | What I'm proposing / what you're judging | Confidence (+ why) | Decision | Target | Source items |
