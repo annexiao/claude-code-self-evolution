@@ -78,7 +78,7 @@ Print the `Files: N total / Warnings: K` line in the run narration. Legacy-schem
 **2.3 Route each surviving cluster** with this tree:
 
 ```
-Already covered by an existing rule / memory / CLAUDE.md entry?
+Already covered by an existing rule / memory / SKILL / CLAUDE.md entry?
    -> route reject(covered). Do NOT silently drop it: this row feeds
      enforcement debt. ATOMIC (added 2026-07-15): the moment you judge
      a candidate "covered" you MUST, in the same step, stamp
@@ -87,6 +87,28 @@ Already covered by an existing rule / memory / CLAUDE.md entry?
      covered judgment without the debt fields is an incomplete
      judgment, and is why debt sat at 0 for months (the stamp step
      was silently skipped every run). Archive to .processed/ at EXECUTE.
+
+     MECHANICAL, not eyeballed (added 2026-07-25 after a real miss):
+     the covered-check is an ON-DISK grep, seeded from the candidate's
+     `topic:` slug, over EVERY store that governs behavior. A /evolve
+     run reads no project code files, so the stores NOT loaded into this
+     run's context are exactly the ones a from-memory guess can never
+     catch. Grep ALL of these:
+       - always-on rules: `~/.claude/rules/**/*.md` (no frontmatter)
+       - PATH-SCOPED rules: the SAME `~/.claude/rules/**/*.md` files
+         that DO carry `paths:` frontmatter (web/*, language dirs, and
+         the scoped commons). These NEVER load during /evolve, so they
+         are the sharpest blind spot, blinder than skills.
+       - memories: `~/.claude/projects/*/memory/*` (all projects + global)
+       - skills: `~/.claude/skills/*/SKILL.md`
+       - CLAUDE.md (the one store that IS always in context)
+     Guessing "covered" from a hardcoded rule-name list you hold in
+     context is the convenient PROXY, not the check: it is structurally
+     blind to skills, to path-scoped rules, and to project memories.
+     That blindness is how a candidate canonically owned by a skill got
+     re-proposed as a fresh memory write instead of logged as debt. A
+     candidate covered by a skill, a path-scoped rule, or a project
+     memory is still `reject(covered)` and still owes the debt fields.
 
 "If-this-then-that" persistent principle?          -> RULE   (cheapest)
 Nuanced preference / framework worth persisting?    -> MEMORY
@@ -103,10 +125,11 @@ Tiebreaks: rule-vs-memory goes to rule (auto-applied, more discoverable); memory
 - **Global rule** goes to: list `~/.claude/rules/` subdirs (`common/`, `web/`, `python/`, `typescript/`, `golang/`, `swift/`, `php/`; skip `zh/`), pick the most domain-specific fit, read that subdir's file headings, pick the best-matching file. Then: new principle appends under the best heading; refines an existing entry, modify in place; duplicate, it should have routed `reject(covered)` in 2.3.
 - **Project rule** goes to: repo root via `git rev-parse --show-toplevel`; target `<root>/.claude/rules/*.md` if that convention exists, else `<root>/CLAUDE.md`, else propose creating `<root>/CLAUDE.md`. (Write only after the user confirms, Scope gate.)
 - **Memory**: reminder at the point of use, **a single-instance framework (`delight-aha-framework` / `feedback_framework_*`) does NOT need recurrence to route here**, transferability is its bar (gate 2's category-error note). Do not defer an aha "until it repeats." Then run the promotion audit:
-  `grep ~/.claude/projects/*/memory/feedback*<similar-topic>*` + same against the global dir `~/.claude/projects/<your-home-project>/memory/`.
+  `grep ~/.claude/projects/*/memory/feedback*<similar-topic>*` + same against the global dir `~/.claude/projects/<your-home-project>/memory/` + **also** `grep -l <topic-words> ~/.claude/skills/*/SKILL.md` (a "memory" candidate is frequently already owned by a skill; skipping the skill grep is the 2026-07-25 miss).
 
   | Audit finds | Routing |
   |---|---|
+  | Already owned by a SKILL (canonically) | route `reject(covered)` against that SKILL + stamp debt; if a project/global memory is a cruder duplicate of the skill, propose RETIRING that memory and pointing it at the skill, do NOT also write a rule |
   | Topic nowhere yet | Route by the gates' scope decision (2.2). `proposed_scope` is a hint for where to LOOK, never sufficient by itself for a global write. |
   | In 1 project memory + candidate from a different project | PROMOTE to global; propose merging/removing the old project entry in the plan table |
   | In 2+ project memories | AUTO-PROMOTE to global; propose archiving project entries (move, don't delete) |
