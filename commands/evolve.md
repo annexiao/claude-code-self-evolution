@@ -57,6 +57,10 @@ Print the `Files: N total / Warnings: K` line in the run narration. Legacy-schem
 
 **1.5 Historical enforcement-debt readout.** Over the existing `~/.claude/pending-evolve/.evolve-decisions.jsonl` (before this run appends anything), filter rows where `decision_reason == "covered by existing rule"` AND `would_have_prevented == "yes"`, group by `mapped_rule_clause`, note per-clause counts. This is each clause's standing **enforcement debt**. Cold start (no log / no such rows) is fine: note "no debt data" and move on. Full debt semantics + the graduation ladder: Appendix B.
 
+> **Split by triage, and window it (added 2026-07-25, because the raw count conflates two opposite fixes and never ages out).** Two corrections to the tally above, or it mis-graduates:
+> - **Split each clause's count by the row's `triage=` tag** (`plumbing` / `steerability` / `over-scoping`, stamped on covered rows, per Appendix B Step 1). The count that drives a HOOK/decompose graduation is the **steerability** count ALONE. Plumbing rows (the rule existed but was never delivered to context) route to a **loading** fix, not a hook: hardening a rule that was never delivered does nothing. Over-scoping rows route to a **narrowing**. A clause at threshold on plumbing/over-scoping rows must NOT be proposed for a hook.
+> - **Window the count.** This is Appendix B's own "did it work = the clause stops appearing with `would_have_prevented=yes` in *later windows*", which the raw all-time tally does not implement. If an `annotation` row carrying `resolves_clause: <clause>` exists (write one at EXECUTE whenever this run fixes a root cause for a clause: a loading fix, a hook, a narrowing), count ONLY covered-rows dated AFTER that annotation for that clause. A fixed root cause then ages out instead of accumulating forever; without this, resolved debt keeps counting and eventually crosses the threshold on stale rows.
+
 **1.6 (project mode only) Read ALL ADRs in the repo's `docs/decisions/`, including `Superseded` ones.** Superseded ADRs carry the constraints and rejected alternatives that shaped the current state; skipping them means re-proposing patterns already tried and rejected. (Global mode reads no project ADRs.)
 
 ---
@@ -156,7 +160,12 @@ Tiebreaks: rule-vs-memory goes to rule (auto-applied, more discoverable); memory
 
   After any memory write (at EXECUTE), append an index line to the `MEMORY.md` in the same directory.
 
-**2.5 Projected enforcement debt.** Take the historical per-clause counts from 1.5 and ADD this run's provisional `reject(covered)` classifications (with `would_have_prevented=yes`) from 2.3. Any clause whose projected count reaches **~3-4** is a **graduation candidate**: prose is demonstrably not holding; propose climbing it one rung up the enforcement ladder (Appendix B). Graduation proposals go into PROPOSE's Enforcement-changes section, never auto-rewrite a rule.
+**2.5 Projected enforcement debt.** Take the historical per-clause counts from 1.5 (already split by triage and windowed) and ADD this run's provisional `reject(covered)` classifications (with `would_have_prevented=yes`) from 2.3, splitting THOSE by triage too. Then route by which triage bucket dominates the clause, never off the raw total:
+- **steerability** count reaches **~3-4** -> a **hook / decompose graduation candidate** (prose is not holding; propose the Appendix B fork).
+- **plumbing** dominates -> a **loading-fix candidate** (the rule was never delivered to context; fix delivery, do NOT propose a hook).
+- **over-scoping** dominates -> a **narrowing/de-escalation candidate**.
+
+Graduation/loading/narrowing proposals go into PROPOSE's Enforcement-changes section, never auto-rewrite a rule. When a proposal fixes a root cause, its EXECUTE step must write the `annotation` + `resolves_clause` row (per 1.5) so the clause's pre-fix debt ages out.
 
 ---
 
@@ -266,6 +275,8 @@ It aggregates accept/reject/defer rates per `skill_source` since the last cutoff
   - Accept: `"cross-source cluster"`, `"high-confidence instinct"`, `"explicit meta-correction"`, `"reinforced across sessions"`, `"auto-promote to global"`, `"framework transferable on first articulation"`, `"clear single-stream signal, well-articulated rule"`
 - **`mapped_rule_clause`** (enforcement-debt field, ONLY on `"covered by existing rule"` rows): the specific clause duplicated, as `<rule-file-basename>#<short-clause-slug>` (e.g. `your-rule.md#specific-sub-clause`), the sub-behavior, not the whole file. Omit elsewhere.
 - **`would_have_prevented`** (ONLY on covered rows): `yes` | `no` | `unclear`, would that rule, *if actually followed*, have prevented this failure? A counterfactual, not topical relatedness. Only `yes` counts toward debt; `no`/`unclear` guard against graduating the wrong rule on false attribution. Omit elsewhere.
+- **`triage`** (in `tags` as `triage=<v>`, on covered rows, added 2026-07-25): `plumbing` (the covering artifact was never IN context when the mistake happened, e.g. a skill or path-scoped rule that did not load, or a routing-audit that did not scan it) | `steerability` (it WAS in context, ignored anyway) | `over-scoping` (it fired on a legitimately-different case, no real harm). 1.5/2.5 route by this: only `steerability` drives a hook graduation. Stamp it from the candidate's own triage frontmatter (`rule_in_context`, `acknowledged_then_violated`) or infer from the body.
+- **`resolves_clause`** (ONLY on `decision:"annotation"` rows, added 2026-07-25): `<mapped_rule_clause>`, records that this run fixed a root cause for that clause (a loading fix, a hook, a narrowing). 1.5 counts only covered-rows dated AFTER this annotation for that clause, so resolved debt ages out instead of accumulating on stale rows.
 - **`tags`**: `key=value` strings from frontmatter; best-effort `type=`, `direction=`, `topic=`, `scope=` (legacy rows may omit them, the generator now emits them so new rows comply; do not retro-fill old rows); clusters add `cluster_id=`.
 - **`confidence`**: 0.0 to 1.0. 0.9+ = cross-source cluster / user meta-correction / 3+ projects; 0.7 to 0.85 = clear single-stream; <0.7 = usually defer instead.
 - **`evolve_session_at`**: ISO 8601 **UTC Z-form only** (`date -u +"%Y-%m-%dT%H:%M:%SZ"`, generated once per run). The review script's `jq fromdate` parses only Z-form; a local-offset timestamp breaks aggregation silently.
