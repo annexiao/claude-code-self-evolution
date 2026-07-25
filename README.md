@@ -21,11 +21,20 @@ No fine-tuning. No cloud. No weights touched. Just your real corrections and end
 ## What's new
 
 > <details>
-> <summary><sub><b>2026-07-20:</b> Sharper oversight. A large approval has to be genuinely readable; verification has to ask not just whether a check ran but whether it could have failed; and a confirmation gate should scale to the risk instead of firing on everything alike.</sub></summary>
+> <summary><sub><b>2026-07-25:</b> Three upgrades to enforcement debt: the coverage check reads wider, each debt's cause is recorded and wired into the counting step, and debt from a fixed cause ages out.</sub></summary>
 >
-> - **A large run now renders its approval surface as a page, not a chat table.** Past a few dozen proposed writes a table has no good setting: written out fully it is unreadable, compressed it leaves you approving a category label instead of a proposal. A page dissolves that, because a one-line summary and the full evidence behind it can both exist with you choosing which to look at. `/evolve` also gains a plain size rule for the chat fallback: cap a review surface at about seven rows, batch anything longer. See [docs/REVIEW-BOARD.md](docs/REVIEW-BOARD.md).
-> - **The verify-before-claiming rule was split, because its enforcement hook was catching the wrong half.** The hook fires when the agent claims something is done or live with nothing to back it, and it works. But the failures that kept recurring were a different shape: a check *was* run and could not have come out the other way. That principle was already in the rule, as its last line, under two dozen accumulated examples. The rule now leads with the two shapes and a four-question test on your own check (layer, scope, timing, arbiter), with the accumulated examples demoted to evidence. The hook was extended at both layers, since messages of the second shape never reached its judge at all.
-> - **A rule was narrowed rather than hardened, for the first time.** The triage model has always had three outcomes, and only two had ever fired. A confirmation gate meant for outward-facing actions was firing on the owner's own one-command-rollback deploys, adding a round trip and removing no risk. It is now calibrated by blast radius and reversibility, which is what an over-scoping diagnosis is supposed to produce.
+> - **Wider coverage check.** The "is this already covered?" step now greps the whole library on disk: skills, path-scoped rules, and memories, in addition to the always-on rules.
+> - **Stronger record of each debt's cause.** The debt triage now structurally records each debt's cause (never delivered / delivered-and-ignored / fired-on-the-wrong-case) and is wired into the step that actually counts debt. Only delivered-and-ignored drives a hook.
+> - **Fixed debt ages out.** Once a rule's root cause is addressed, the debt logged against it before the fix stops counting toward the graduation threshold.
+>
+> </details>
+>
+> <details>
+> <summary><sub><b>2026-07-20:</b> A big approval renders as a readable page, verification asks whether a check could have failed, and the confirmation gate scales to blast radius.</sub></summary>
+>
+> - **Approvals render as a web page, easy to read.** Past a few dozen proposed writes, the page shows a one-line summary and an expandable full-evidence view. For a small approval, the chat surfaces proposals in batches of about seven rows. See [docs/REVIEW-BOARD.md](docs/REVIEW-BOARD.md).
+> - **Verify-before-claiming now leads with two failure shapes and a four-question test on your own check (layer, scope, timing, arbiter).** The failure that kept recurring was a check that ran but could not have come out the other way; the rule surfaces that shape first, and the hook now catches it.
+> - **A confirmation gate now scales to blast radius and reversibility, so it no longer interrupts the owner's own one-command-rollback deploys.** This is the triage model narrowing a rule instead of hardening one, for the first time.
 >
 > </details>
 >
