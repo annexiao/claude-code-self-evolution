@@ -94,6 +94,68 @@ suggested_target: memory | CLAUDE.md | rule | undetermined
 <Verbatim the user correction phrase + verbatim Claude action that triggered it.>
 ```
 
+### Enforcement-debt triage fields (fill ONLY for recurrence candidates)
+
+When a correction is a **recurrence of an existing rule** (the rule was loaded and violated anyway, so this
+candidate will route `reject(covered)` at /evolve, while the recurrence itself is the signal), add these fields
+so `/evolve`'s triage model (`evolve.md` Appendix B step 1) has **captured-at-the-moment evidence** to classify
+the failure instead of guessing after the fact. Only fill them for recurrence / enforcement-debt candidates;
+skip for genuinely-new corrections.
+
+```yaml
+recurrence_of: <rule-file>#<clause-slug>              # the existing rule/clause this recurs against
+enforcement_debt: yes
+triage_label: plumbing | steerability | over-scoping  # the 3-way cause classification
+covering_artifacts: <every artifact that would have prevented this, + loaded?>  # see step 0 below
+rule_in_context: yes | no | unknown                   # was the OPERATIVE artifact loaded at violation time?
+acknowledged_then_violated: yes | no                  # did Claude reference the rule, then violate it?
+legitimate_variant: yes | no                          # was the "violation" actually correct on a case the rule shouldn't cover?
+triage_evidence: <1-2 sentences: why this label>
+```
+
+**Step 0, before any label: list EVERY artifact that would have prevented this, and whether each was loaded.**
+Not just the one named in `recurrence_of`. Grep all five stores on disk (always-on rules, **path-scoped** rules,
+**skills**, memories, the project instruction file), exactly as `/evolve`'s covered-check does. This step exists
+because a principle is routinely **split across two surfaces**: the *judgment* in an always-on rule, the
+*operative action* in an on-demand skill. Looking only at the always-on half sees "loaded" and stamps
+steerability, when the artifact carrying the action was never in context at all, which is plumbing and routes to
+the opposite fix.
+
+`rule_in_context` answers for the artifact holding the **operative step**, not for whichever rule came to mind
+first. If the stores disagree (rule loaded, skill not), say so in `covering_artifacts` and let /evolve decide.
+
+**How to classify** (read the fields off what the session actually shows; this is the source-side evidence, not a
+verdict, and /evolve makes the call):
+
+| Evidence | Label | Because |
+|---|---|---|
+| `rule_in_context: no`, no acknowledgement | **plumbing** | The artifact was not loaded that turn, so fix LOADING, not the rule. Hardening an undelivered rule does nothing. |
+| The operative artifact was **not** loaded, even though a related always-on rule was | **plumbing** | The split-surface case from step 0. This is the one most often mislabeled steerability. |
+| `rule_in_context: yes` + `acknowledged_then_violated: yes` | **steerability** | Loaded, seen, ignored, so it needs a real enforcement point such as a prompt-hook, not a third prose rewrite. |
+| `rule_in_context: yes` + `acknowledged_then_violated: no`, and step 0 found **no** unloaded covering artifact | **steerability** | In context, produced no behavioral pull. Weaker evidence than the acknowledged case, so say so in `triage_evidence`. |
+| `legitimate_variant: yes` (recurred but no real harm; the "violation" was correct behavior) | **over-scoping** | Narrow or de-escalate the rule; a bigger hammer is the wrong fix. |
+
+**Never leave a combination to fall through.** If the evidence matches no row, write `triage_label: unclear` and
+say why. Do NOT default to `steerability`. That label is the only one that escalates to a hook, so an unexamined
+default is biased toward the most expensive fix. `unclear` is cheap and honest; a wrong `steerability` buys a
+hook for a rule that was never delivered.
+
+**A `triage_label` without its evidence fields is an incomplete triage.** The label is a hypothesis; the
+`covering_artifacts` / `rule_in_context` / `acknowledged_then_violated` / `legitimate_variant` /
+`triage_evidence` fields are what make it checkable (the same "confidence must carry its why" discipline as the
+/evolve plan table).
+
+Anchor: 26 candidates across 8 projects each stamped `steerability` against a verification rule's "a check that
+could not have failed" section, which was genuinely loaded every time. The operative step ("point the checker at
+a known-bad input first") lived in an on-demand QA skill that was never loaded when those probes were written,
+so the whole cluster was plumbing. Measured the same day: 73 of 95 stamped candidates in the queue came from the
+`rule_in_context: yes` + `acknowledged: no` combination, which had **no row** in the previous version of this
+table, and drifted to `steerability` 56 times, `over-scoping` 14 and `plumbing` 3, which is the signature of a
+missing row rather than a judgment call.
+
+The same fields may be added to a D2 (self-correction) candidate when Claude's self-caught failure is itself a
+recurrence of an existing rule.
+
 ## Direction 2: Claude self-correction (internal recognition)
 
 ### Triggers

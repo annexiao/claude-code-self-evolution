@@ -487,7 +487,7 @@ An earlier design used a single "make the rule harder" ladder. It was falsified 
 
 | Cause | Signature | Fix direction |
 |---|---|---|
-| **Plumbing** | the rule was never IN context that turn (evicted, not reloaded after compaction) | fix LOADING, not the rule |
+| **Plumbing** | the artifact holding the operative step was never IN context that turn (evicted, not reloaded after compaction, or the principle is split so the judgment sits in an always-on rule while the action sits in an on-demand skill that never loaded) | fix LOADING, not the rule |
 | **Steerability** | the rule was in context, acknowledged, and ignored anyway | move to a real enforcement point (Step 2) |
 | **Over-scoping** | the rule fired on a legitimately-different case (recurrence with no real harm) | DE-escalate: narrow the trigger or demote severity |
 
