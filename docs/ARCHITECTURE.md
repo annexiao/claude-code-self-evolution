@@ -383,6 +383,27 @@ Every candidate passes **five gates in sequence** (canonical spec in `evolve.md`
 | **4. Scope** | global / project / context-dependent / defer? | cleared + high + cross-project + no conflict → **global**. high but project-specific, or conflict-vetoed → **project (context-dependent)**, only after user confirm. medium/low/unclear/unresolved-conflict → **defer**. `inbox` proposes the outcome but writes nothing. |
 | **5. Aging** | has this candidate waited long enough to count as answered? | **The exit from `defer`.** `rejected("insufficient evidence")` + archive when ALL of: deferred **at least 3 times**, first appearance **more than 3 months** ago, and **no second instance** ever accumulated. Both the count and the elapsed time are required: the count alone assumes a fixed /evolve cadence (3 defers is three weeks for one user and three months for another), and the age alone can retire a candidate that was judged only once. **Frameworks are exempt**, since gate 2 says they never gated on recurrence, so "no second instance" is not evidence against them. Archiving is not deletion; the file moves to `.processed/`. |
 
+#### 2.2b Memory aging: the same exit, applied to the index
+
+The gates above govern the CANDIDATE queue. A memory index is loaded every session and otherwise only
+grows, so it needs the same exit. A memory archives to that memory dir's `.processed/` (and loses its
+index line) when ALL THREE hold: **(a)** it has existed more than 5 months, by git's first commit for
+the file rather than `mtime`, which an edit resets so it measures last touch and not age;
+**(b)** it has never been recalled; **(c)** no second memory `[[links]]` it. Archiving is not deletion.
+
+**Frameworks are exempt**, and the reason is an internal-consistency one worth stating: gate 2 already
+says frameworks are gated on *transferability*, never on recurrence. Condition (c) is a
+recurrence-shaped test, so applying it to frameworks would let the retire side of the spec contradict
+its own admit side. Expect this exemption to cover most of a mature corpus, not a fringe of it.
+
+**Condition (b) needs a recall counter that may not exist, and the spec says to check rather than
+approximate.** A memory-surfacing hook typically logs nothing about what it surfaced, APFS does not
+update `atime` on read, and the harness's own recall path emits nothing readable. Where no counter
+exists, run (a) + (c) + the exemption and hold (b) open: reading "no record of recall" as "never
+recalled" archives on a missing sensor rather than a measurement. The enabling fix (append
+`{name, at}` to a `.recall-log.jsonl` in the surfacing hook) goes to PROPOSE, since it edits an
+execution point.
+
 **Confidence has three change-axes, not one:** recurrence-agreement raises it (gate 2), staleness lowers it (weekly decay script), and **semantic conflict vetoes global promotion outright** (gate 3), conflict is not a slow decrement like decay, it's a hard stop, because a single counterexample refutes "globally true."
 
 **Why:** previously capture dumped everything to one root queue and `/evolve` treated it all as global candidates, counting only *agreement* and never *contradiction*, risking project-specific candidates becoming global, and the ruleset silently growing internal contradictions. The four gates make **default defer** the safe baseline and make conflict a first-class veto. Source: 2026-05-25 routing-layer + four-gate design discussion.

@@ -21,6 +21,16 @@ No fine-tuning. No cloud. No weights touched. Just your real corrections and end
 ## What's new
 
 > <details>
+> <summary><sub><b>2026-08-16:</b> Both queues gained an exit. Deferred candidates and unused memories can now age out instead of accumulating forever.</sub></summary>
+>
+> - **`defer` is no longer a one-way door.** A candidate deferred at least 3 times, first seen more than 3 months ago, with no second instance, is retired as "insufficient evidence" and archived. Both the count and the elapsed time are required: a count alone assumes a fixed run cadence, and age alone can retire something judged only once.
+> - **The memory index gained the same exit.** A memory older than 5 months, never recalled, with no other memory linking to it, archives too. Frameworks are exempt, for the reason the promotion gates already give: a transferable lens is valuable on first articulation, so a recurrence-shaped test must not retire it.
+> - **Archiving is not deletion.** Both gates move the file to `.processed/`, where it stays recoverable.
+> - **A condition with no sensor says so.** The memory gate's "never recalled" needs a recall counter that may not exist. Rather than reading "no record" as "never happened", the gate tells you to check first and hold that condition open until a counter exists.
+>
+> </details>
+>
+> <details>
 > <summary><sub><b>2026-07-25:</b> Three upgrades to enforcement debt: the coverage check reads wider, each debt's cause is recorded and wired into the counting step, and debt from a fixed cause ages out.</sub></summary>
 >
 > - **Wider coverage check.** The "is this already covered?" step now greps the whole library on disk: skills, path-scoped rules, and memories, in addition to the always-on rules.
