@@ -87,6 +87,34 @@ Print the `Files: N total / Warnings: K` line in the run narration. Legacy-schem
 
    Why this gate exists: without it, `defer` is a channel with no exit. Every run re-reads, re-judges and re-defers the same candidates, spending judgment on an unchanging batch while the queue grows monotonically. A single-instance correction defers *while waiting for recurrence*; three rounds with no recurrence **is** the evidence, not a still-open question. Archiving is not deletion: the file moves to `.processed/` and can be pulled back.
 
+**2.2b Memory aging, the same exit applied to the memory index.**
+
+The gates above govern what ENTERS. A memory index is loaded every session and otherwise only grows,
+so it needs the exit `defer` has. **Archive a memory file to that memory dir's `.processed/` (and drop
+its index line) when ALL THREE hold:**
+
+- **(a)** it has existed for more than **5 months**. The authoritative source is git's first commit for
+  that file, NOT filesystem `mtime`: an edit resets `mtime`, so `mtime` measures last touch, not age.
+- **(b)** it has **never been recalled** by any `/evolve` run or session.
+- **(c)** **no second memory points at it**, i.e. no other memory `[[links]]` it.
+
+**Frameworks are exempt** (`polarity: framework`). Same reason gate 2 gives: a transferable lens is
+valuable on first articulation, so it was never gated on recurrence and must not be retired by a
+recurrence-shaped test. Expect this exemption to cover most of a mature corpus, not a fringe of it.
+
+**Archiving is not deletion.** The file moves to `.processed/` and its index line can be restored.
+
+> **Condition (b) needs a recall counter, and one may not exist.** Check before evaluating it. A
+> memory-surfacing SessionStart hook typically writes no record of what it surfaced; APFS does not
+> update `atime` on read; and the harness's own recall path emits nothing a command can read. If there
+> is no counter, **run (a) + (c) + the exemption and hold (b) open** rather than reading "no record of
+> recall" as "never recalled", which archives on a missing sensor instead of a measurement.
+>
+> The enabling fix is small and additive: have the surfacing hook append `{name, at}` to
+> `<memory-dir>/.recall-log.jsonl` for each memory it surfaces. That changes an execution point, so it
+> goes to PROPOSE rather than straight in. It also covers only that hook's own path, so its silence
+> stays **necessary but not sufficient**; (c) and the exemption remain load-bearing permanently.
+
 **2.3 Route each surviving cluster** with this tree:
 
 ```
