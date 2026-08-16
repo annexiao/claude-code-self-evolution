@@ -373,7 +373,7 @@ This is a **deliberate cost-aware default**. Source: 2026-05-22 design discussio
 | **`/evolve global`** (default) | high-confidence + cross-project-general or ≥2 recurrence | global rule / memory |
 | **`/evolve project`** | current-repo candidates (by `project_id` / `git rev-parse`) | project rule / memory, only after explicit user confirmation |
 
-Every candidate passes **four gates in sequence** (canonical spec in `evolve.md` "The four gates"). Failing a gate stops promotion; it is not retried at a higher tier.
+Every candidate passes **five gates in sequence** (canonical spec in `evolve.md`). Failing a gate stops promotion; it is not retried at a higher tier. **Gates 1 to 4 decide whether a candidate goes UP** (into a rule or a memory); **gate 5 decides whether it goes OUT**. Gate 5 is the exit from `defer`, and it exists because without it `defer` has no terminal state: every run re-reads, re-judges and re-defers the same candidates, spending judgment on an unchanging batch while the queue grows monotonically.
 
 | Gate | Question | Outcome |
 |---|---|---|
@@ -381,10 +381,13 @@ Every candidate passes **four gates in sequence** (canonical spec in `evolve.md`
 | **2. Confidence** | How strong is the evidence? | `routing_confidence` high / medium / low, stamped by `inbox` (judgment, not capture). high = cross-project-general OR ≥2 *agreeing* projects OR the user meta-corrected. Only high proceeds; else defer. |
 | **3. Conflict** | Counterexample or boundary conflict? | **A VETO, not a score.** Scan other projects + existing `rules/` for ¬X. Asymmetric: one genuine counterexample outweighs many agreements (it refutes universality). Any conflict **vetoes global promotion** → reclassify `context-dependent`. **Conflict with an existing global rule MUST be surfaced loudly**, never silently grow a self-contradictory ruleset; the user decides whether the old rule scopes down or the new one is context-specific. |
 | **4. Scope** | global / project / context-dependent / defer? | cleared + high + cross-project + no conflict → **global**. high but project-specific, or conflict-vetoed → **project (context-dependent)**, only after user confirm. medium/low/unclear/unresolved-conflict → **defer**. `inbox` proposes the outcome but writes nothing. |
+| **5. Aging** | has this candidate waited long enough to count as answered? | **The exit from `defer`.** `rejected("insufficient evidence")` + archive when ALL of: deferred **at least 3 times**, first appearance **more than 3 months** ago, and **no second instance** ever accumulated. Both the count and the elapsed time are required: the count alone assumes a fixed /evolve cadence (3 defers is three weeks for one user and three months for another), and the age alone can retire a candidate that was judged only once. **Frameworks are exempt**, since gate 2 says they never gated on recurrence, so "no second instance" is not evidence against them. Archiving is not deletion; the file moves to `.processed/`. |
 
 **Confidence has three change-axes, not one:** recurrence-agreement raises it (gate 2), staleness lowers it (weekly decay script), and **semantic conflict vetoes global promotion outright** (gate 3), conflict is not a slow decrement like decay, it's a hard stop, because a single counterexample refutes "globally true."
 
 **Why:** previously capture dumped everything to one root queue and `/evolve` treated it all as global candidates, counting only *agreement* and never *contradiction*, risking project-specific candidates becoming global, and the ruleset silently growing internal contradictions. The four gates make **default defer** the safe baseline and make conflict a first-class veto. Source: 2026-05-25 routing-layer + four-gate design discussion.
+
+**Why gate 5 came later:** making `defer` the safe baseline (gates 1 to 4) is only half a design. A default that is never revisited becomes a leak. In practice a queue accumulated candidates that had been deferred 3 to 9 times each, some continuously for months, so every run re-read and re-judged the same batch while the queue grew monotonically. The cost shape is **repeated expenditure**, not a wrong output, which is why no correctness check surfaces it: each individual defer is a correct judgment, and the defect lives only in the sequence. It becomes visible when you count **how many times each candidate has been handled**, rather than how many candidates there are.
 
 This adds a sixth design philosophy (below): **default defer; root ≠ global; conflict vetoes, it doesn't average.**
 

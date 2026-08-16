@@ -68,7 +68,7 @@
 1. **看你做了什么。** 一个 hook 记录 tool-call 的模式,一个小的 observer model 把反复出现的模式蒸馏成带置信度的 **instincts**。(这个引擎是 [ECC](https://github.com/affaan-m/ECC),已 vendored 进来。)
 2. **听对话,两边都听。** session 结束时的 skills 捕捉真正重要的瞬间,而且不只是你的:你 **纠正** Claude 的时候、Claude **自己发现错** 的时候、你 **认可** 某个做法的时候、某个 framing **说到点上** 的时候。纠正和认可各自都从两个方向捕捉,从你,也从 Claude。
 
-两条流都只是把候选 **dump 进一个队列**。在你 **跑 `/evolve`** 之前,没有任何东西会变成持久的。`/evolve` 是唯一的 review 界面:它把所有信号聚类,让每条过四道 gate,再写成最合适的 artifact,rule、memory 还是 skill(优先选最便宜、够用的那个)。
+两条流都只是把候选 **dump 进一个队列**。在你 **跑 `/evolve`** 之前,没有任何东西会变成持久的。`/evolve` 是唯一的 review 界面:它把所有信号聚类,让每条过五道 gate(四道决定什么往上走,一道决定什么该出队),再写成最合适的 artifact,rule、memory 还是 skill(优先选最便宜、够用的那个)。
 
 ```mermaid
 flowchart LR
@@ -76,7 +76,7 @@ flowchart LR
     B["对话里说的<br/>(纠正 + 认可,<br/>来自你 也来自 Claude)"] -->|session 末捕捉| Q2[("pending-evolve<br/>队列")]
     Q1 -.读.-> E
     Q2 -.读.-> E
-    E{{"/evolve<br/>四道 gate,你批一次"}}
+    E{{"/evolve<br/>五道 gate,你批一次"}}
     E --> R["rule<br/>(便宜)"]
     E --> M["memory"]
     E --> S["skill<br/>(贵)"]
@@ -146,7 +146,7 @@ bash install.sh             # 装进 ~/.claude/
 |---|---|---|
 | `skills/correction-capture/` | 捕捉纠正,两个方向(你对 Claude,Claude 对自己) | 本项目 |
 | `skills/delight-capture/` | 捕捉认可 + reframing,两个方向 | 本项目 |
-| `commands/evolve.md` | cost-aware、四道 gate 的 `/evolve` 判断界面 | 本项目(重写自 ECC 的) |
+| `commands/evolve.md` | cost-aware、五道 gate 的 `/evolve` 判断界面 | 本项目(重写自 ECC 的) |
 | `commands/save-session.md` | 保存 session 状态并触发捕捉链。如果你已经有 save-session,安装器会把链条注进你现有的那个 | 本项目 |
 | `scripts/apply-instinct-decay.py` | 确定性的每周 confidence decay | 本项目 |
 | `scripts/verify-pending-evolve.sh` | 队列健康检查,`/evolve` 会跑 | 本项目 |
@@ -156,7 +156,7 @@ bash install.sh             # 装进 ~/.claude/
 
 ## 读懂设计
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md):完整地图。捕捉层、蒸馏层、判断层、输出 sink、四道 gate、eval 回路、还有六条设计哲学。想理解或 fork 它,从这里开始。
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md):完整地图。捕捉层、蒸馏层、判断层、输出 sink、五道 gate、eval 回路、还有六条设计哲学。想理解或 fork 它,从这里开始。
 - [docs/COMPARISON-WITH-ECC.md](docs/COMPARISON-WITH-ECC.md):在 ECC 之上到底加了什么,为什么。
 - [docs/COMPARISON-OTHER-SYSTEMS.md](docs/COMPARISON-OTHER-SYSTEMS.md):它在其他 self-evolving agent 项目里处在什么位置。
 

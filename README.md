@@ -68,7 +68,7 @@ Treat learning as **two cheap capture streams feeding one deliberate judgment**:
 1. **Watch what you do.** A hook records tool-call patterns; a small observer model distills repeated ones into confidence-weighted **instincts**. (This engine is [ECC](https://github.com/affaan-m/ECC), vendored here.)
 2. **Listen to the conversation, both sides.** Session-end skills capture the moments that matter, and not just yours: when you **corrected** Claude, when Claude **caught itself**, when you **endorsed** a move, when a framing **landed**. Correction and delight are each captured in two directions, from you and from Claude.
 
-Both streams just dump candidates to a queue. Nothing becomes durable until **you run `/evolve`**, the single review surface that clusters every signal, routes each one through four gates, and writes whichever artifact fits: a rule, a memory entry, or a skill (preferring the cheapest one that does the job).
+Both streams just dump candidates to a queue. Nothing becomes durable until **you run `/evolve`**, the single review surface that clusters every signal, routes each one through five gates (four decide what goes up, one decides what ages out), and writes whichever artifact fits: a rule, a memory entry, or a skill (preferring the cheapest one that does the job).
 
 ```mermaid
 flowchart LR
@@ -76,7 +76,7 @@ flowchart LR
     B["What's SAID<br/>(corrections + delight,<br/>from you AND from Claude)"] -->|session-end capture| Q2[("pending-evolve<br/>queue")]
     Q1 -.read.-> E
     Q2 -.read.-> E
-    E{{"/evolve<br/>4 gates, you approve once"}}
+    E{{"/evolve<br/>5 gates, you approve once"}}
     E --> R["rule<br/>(cheap)"]
     E --> M["memory"]
     E --> S["skill<br/>(expensive)"]
@@ -146,7 +146,7 @@ Both are **dump-only**: they write candidate files and exit. They never interrup
 |---|---|---|
 | `skills/correction-capture/` | Captures corrections, two directions (you to Claude, Claude to itself) | This project |
 | `skills/delight-capture/` | Captures endorsements + reframings, two directions | This project |
-| `commands/evolve.md` | The cost-aware, four-gate `/evolve` judgment surface | This project (rewrite of ECC's) |
+| `commands/evolve.md` | The cost-aware, five-gate `/evolve` judgment surface | This project (rewrite of ECC's) |
 | `commands/save-session.md` | Saves session state and fires the capture chain. If you already have a save-session, the installer injects the chain into it instead | This project |
 | `scripts/apply-instinct-decay.py` | Deterministic weekly confidence decay | This project |
 | `scripts/verify-pending-evolve.sh` | Queue health check, run by `/evolve` | This project |
@@ -156,7 +156,7 @@ Both are **dump-only**: they write candidate files and exit. They never interrup
 
 ## Learn the design
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the complete map. Capture layer, distill layer, judgment layer, output sinks, the four gates, the eval loop, and the six design philosophies. Start here if you want to understand or fork it.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the complete map. Capture layer, distill layer, judgment layer, output sinks, the five gates, the eval loop, and the six design philosophies. Start here if you want to understand or fork it.
 - [docs/COMPARISON-WITH-ECC.md](docs/COMPARISON-WITH-ECC.md): exactly what this adds on top of ECC, and why.
 - [docs/COMPARISON-OTHER-SYSTEMS.md](docs/COMPARISON-OTHER-SYSTEMS.md): how it sits among other self-evolving agent projects.
 
