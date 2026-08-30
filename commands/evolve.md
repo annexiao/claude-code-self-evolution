@@ -64,7 +64,6 @@ Print the `Files: N total / Warnings: K` line in the run narration. Legacy-schem
 > **Canonicalize the clause name before counting, and skip frozen clauses (added 2026-08-29).** Two more corrections to the grouping above. Without them the readout is wrong in the one direction that matters: it always errs toward "no graduation candidate this run".
 >
 > - **Group by the CANONICAL clause, not the literal string.** Measured 2026-08-29 over one log's 518 covered rows: 482 carried a clause, spelled **288 distinct ways** while pointing at only **71 files**. A single rule file carried **202 rows under 75 different spellings**, where `<file>.md#shape2-layer` and `rules/common/<file>.md#shape-2-layer-question` are ONE clause counted twice. Since the graduation threshold is 3-4, a clause with 13 real debt reads as three separate clauses each hovering just under it: **the file carrying 42% of all debt is structurally incapable of tripping its own threshold, and no amount of judgment fixes that.** Before grouping, fold each string to a canonical `<basename>#<slug>`: strip any leading path (`rules/common/`), lowercase, and merge known aliases. **Do NOT rewrite the log to do this**, it is append-only by protocol (Appendix A), and rewriting the evidence store to fix a reading of it is the wrong layer. Fold at READ time only.
-> - **Skip clauses carrying a `frozen_clause` annotation.** A clause whose fix was considered and deliberately declined (Appendix B "Freezing") is not a graduation candidate, and re-surfacing it every run is exactly the loop freezing exists to end.
 
 > **Apply `voids_annotation` first, and never let a parent clause window its children (added 2026-08-29).** Two ordering rules the 2026-08-29 run learned the hard way.
 >
@@ -214,8 +213,6 @@ Tiebreaks: rule-vs-memory goes to rule (auto-applied, more discoverable); memory
 Graduation/loading/narrowing proposals go into PROPOSE's Enforcement-changes section, never auto-rewrite a rule. When a proposal fixes a root cause, its EXECUTE step must write the `annotation` + `resolves_clause` row (per 1.5) so the clause's pre-fix debt ages out.
 
 
-**A clause carrying a `frozen_clause` annotation is skipped here too**: do not re-propose a graduation that was already considered and declined. If the situation genuinely changed, unfreeze it first (Appendix B "Freezing"), and say in the proposal what changed.
-
 ---
 
 ## Phase 3: PROPOSE (the only ask)
@@ -327,8 +324,7 @@ It aggregates accept/reject/defer rates per `skill_source` since the last cutoff
 - **`triage`** (in `tags` as `triage=<v>`, on covered rows, added 2026-07-25): `plumbing` (the covering artifact was never IN context when the mistake happened, e.g. a skill or path-scoped rule that did not load, or a routing-audit that did not scan it) | `steerability` (it WAS in context, ignored anyway) | `over-scoping` (it fired on a legitimately-different case, no real harm). 1.5/2.5 route by this: only `steerability` drives a hook graduation. Stamp it from the candidate's own triage frontmatter (`covering_artifacts`, `rule_in_context`, `acknowledged_then_violated`) or infer from the body, but **do NOT take a candidate's self-stamped `steerability` at face value.** Re-ask step 0 yourself: does the operative step live in an on-demand skill or a path-scoped rule that was not loaded? If so the row is `plumbing`, whatever the candidate said. A capture-time stamp can only see the artifact the capture happened to name; a run that reads all five stores on disk can see the one it missed. When a candidate's evidence matches no row it must arrive as `triage=unclear`, never as a defaulted `steerability`, because a defaulted label is biased toward the most expensive fix (a hook), so treat an unexplained `steerability` as unstamped. Anchor: 26 candidates across 8 projects self-stamped `steerability` against an always-on rule that was genuinely loaded, while the operative step sat unloaded in an on-demand QA skill; the whole cluster was plumbing, and taking the stamps at face value would have bought a hook for a rule that was never delivered.
 - **`resolves_clause`** (ONLY on `decision:"annotation"` rows, added 2026-07-25): `<mapped_rule_clause>`, records that this run fixed a root cause for that clause (a loading fix, a hook, a narrowing). 1.5 counts only covered-rows dated AFTER this annotation for that clause, so resolved debt ages out instead of accumulating on stale rows.
 - **Canonical + verifiable clause slugs (added 2026-08-29).** Two requirements on the value above, because 288 distinct spellings over 71 files is what their absence produced. (a) **Verify the slug before stamping it**: grep the target rule file for the real `##` heading the slug corresponds to; no match gives fix the slug, or map the candidate to the clause that does exist. **A stamp that cannot fail is a stamp nobody can correct.** (b) **Reuse the spelling already in the log** for that clause; write `<basename>#<slug>` with NO leading path, lowercase. Phase 1.5 folds historical aliases at read time, but every new row should already be canonical.
-- **`frozen_clause`** (ONLY on `decision:"annotation"` rows , added 2026-08-29): a canonical `mapped_rule_clause` whose debt has been **deliberately accepted**, so collection on it stops. Phase 1.5 skips it and 2.5 does not propose it. The `decision_reason` MUST name why the fix was declined (e.g. "accreted bundle; Appendix B forbids climbing it, and the sanctioned decomposition is not scheduled"). Unfreeze by writing a later `annotation` with `resolves_clause` for the same clause, which reopens it and restarts the count from that date.
-- **`unfrozen_clause`** (ONLY on `decision:"annotation"` rows, added 2026-08-29): the canonical clause being un-frozen. **Unfreezing MUST use this field and never `resolves_clause`.** The two mean opposite things: `resolves_clause` says "the cause was fixed, so pre-fix rows age out", while unfreezing says "we resumed counting" and must window NOTHING. Conflating them silently zeroes a whole family's debt: observed 2026-08-29, when unfreezing a parent clause wiped every row belonging to sub-questions that were never touched.
+- **`frozen_clause`, `unfrozen_clause`**, **RETIRED 2026-08-30 (shipped 2026-08-29, withdrawn the next day; see Appendix B "Freezing: WITHDRAWN"). Do NOT write these fields.** They remain READ-ONLY history: the log is append-only and holds one row of each, so a reader must still parse them. A reader MUST NOT let `frozen_clause` filter, skip, or hide any clause from a readout.
 - **`voids_annotation`** (ONLY on `decision:"annotation"` rows, added 2026-08-29): `{"resolves_clause"|"frozen_clause": "<clause>", "at": "<ISO timestamp>"}`, retracts an EARLIER annotation. The log is append-only, so a wrong annotation is corrected by a later row that names it, never by editing it. Phase 1.5 must apply voids BEFORE it builds its resolved/frozen maps, or it will keep honoring a retracted row.
 - **`tags`**: `key=value` strings from frontmatter; best-effort `type=`, `direction=`, `topic=`, `scope=` (legacy rows may omit them, the generator now emits them so new rows comply; do not retro-fill old rows); clusters add `cluster_id=`.
 - **`confidence`**: 0.0 to 1.0. 0.9+ = cross-source cluster / user meta-correction / 3+ projects; 0.7 to 0.85 = clear single-stream; <0.7 = usually defer instead.
@@ -369,13 +365,28 @@ Different rule shapes get different enforcement homes. Pick by "can this be chec
 
 **Decompose bundles, don't climb them.** A rule that is really N sub-behaviors (e.g. a verify rule's many accreted trigger-shapes) is not one rung to climb, split it: hook the mechanizable sub-clauses individually, path-scope the domain-bounded ones, leave only the irreducible-judgment core as prose (backed by a prompt-hook if needed). "Add trigger-shape #N+1" is the anti-pattern this replaces.
 
-### Freezing: the debt ledger needs an exit, exactly like the candidate queue (added 2026-08-29)
+### Freezing: WITHDRAWN 2026-08-30, and the sentence that justified it was false
 
-The candidate queue got its exit on 2026-08-16 (gate 5, the aging gate). **The debt ledger never got one, and it has the same disease:** a clause whose fix has been considered and declined keeps collecting rows forever, so every future run re-discovers the same debt and re-decides not to fix it. Measured 2026-08-29: one rule file carried 202 covered rows while Appendix B itself forbids the only escalation a threshold would propose for it (climbing an accreted bundle). That is not a pending decision, it is a decision already made, re-litigated monthly.
+**A `frozen_clause` state shipped 2026-08-29 and was removed the next day. Do not re-add it.**
 
-**When a clause reaches threshold AND the sanctioned fix is deliberately not being taken, freeze it:** write an `annotation` row with `frozen_clause: <canonical clause>` and a `decision_reason` naming why. Candidates mapping to a frozen clause are still `reject(covered)` and still archived , they simply stop feeding a counter nobody is going to act on.
+It rested on the claim that *"the debt ledger never got an exit."* **That was false.** `resolves_clause`
+has existed since 2026-07-26 and had been used 24 times. The real defect was the opposite of the one
+freezing addressed: the exit existed and was being used to zero out clauses that then kept failing.
 
-**Freezing is not "we accept this failure forever."** It says: *prose has reached its ceiling here, and the fix is a decomposition or a hook that nobody has bought yet.* Unfreeze the moment someone does: a later `resolves_clause` annotation on the same clause reopens it and starts the count fresh from that date. The distinction worth holding: **a threshold that produces the same declined proposal every run is not measuring anything, it is just re-asking.**
+Freezing also failed twice on first use: the rationale was factually wrong, and unfreezing (which
+reused `resolves_clause`) silently zeroed sibling sub-clauses that were never touched.
+
+**The deeper reason not to re-add it:** freezing collapses *"we decided not to act"* and *"there is no
+problem here"* into the same observable state. Any future version of this idea must keep counting and
+keep displaying, and may only suppress a repeated **proposal**.
+
+**And the evidence that made it look necessary did not survive either.** Every debt curve that
+motivated it was binned by the run that PROCESSED the rows, not by the date the failure happened, and
+runs drain backlog irregularly. Under review, eight successive conclusions about these curves were
+overturned in two days: **all eight from re-reading one fixed dataset, none from new observation.**
+The coarse facts never moved; only the week-level rates did. Treat that as the standing lesson:
+**when every new finding comes from a new reading rather than new data, the process has stopped
+converging.** This ledger cannot support week-resolution conclusions at its current volume.
 
 ### Verify the intervention + de-escalation is real
 
