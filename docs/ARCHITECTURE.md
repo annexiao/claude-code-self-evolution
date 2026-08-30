@@ -532,6 +532,34 @@ Most heavier machinery (weighted/decayed debt scoring, adversarial regression su
 
 ---
 
+### Reading the debt: clauses are grouped by canonical name, and a slug must be verifiable (added 2026-08-30)
+
+Debt is counted per rule clause, so the clause name is the grouping key. Two properties of that
+key are load-bearing, and both were absent until they were measured.
+
+**Group by the canonical clause, not the literal string.** The clause is stamped by hand at
+judgment time, and nothing validated it, so one clause accumulated many spellings that differ
+only by a leading path segment, by case, or by whether the slug was written in English or in the
+rule's own language. Counting those separately splits one clause's debt across several entries
+that each sit below the graduation threshold, so the file carrying the most debt is the least
+likely to cross its own threshold. Phase 1.5 now folds each string to `<basename>#<slug>` before
+grouping: strip any leading path, lowercase, merge known aliases.
+
+The fold happens at **read time only**. The decision log is append-only by protocol, and
+rewriting the evidence store to correct a reading of it is the wrong layer.
+
+**A slug must correspond to a real heading.** Before stamping `mapped_rule_clause`, grep the
+target rule file for the `##` heading the slug names; if none matches, either fix the slug or map
+the candidate to the clause that does exist. Prefer a spelling already present in the log for
+that clause. The general point is worth stating on its own: a stamp that cannot fail is a stamp
+nobody can correct, which is how many spellings for one clause accumulated unnoticed for months.
+
+**What is deliberately absent here.** No trigger, threshold, or metric changed. The graduation
+thresholds and the triage-then-fork model above are unchanged. A freeze state that would have
+stopped counting a declined clause was added and withdrawn within a day, because suppressing a
+count collapses "a decision was made not to act" and "there is no problem here" into the same
+observable state.
+
 ## File structure
 
 ```
